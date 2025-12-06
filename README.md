@@ -1,15 +1,36 @@
 # VoxRay AI
 
-An advanced AI-powered medical console that combines **Vox** (Voice) and **Ray** (X-Ray) technologies to assist medical professionals.
+**An advanced multimodal medical console combining Computer Vision and Conversational AI to streamline clinical workflows.**
 
+## 🏥 Project Overview
 
-## 🚀 Features
+In high-pressure medical environments, clinicians face two critical challenges: **diagnostic fatigue** from analyzing thousands of images and the need to maintain **sterile conditions**, which makes manual data entry cumbersome.
 
-- **VoxRay Vision (F1):** Instantly diagnoses 6 types of conditions from X-Ray images (Normal, Pneumonia, Lung Cancer, Fractures, etc.) using a ResNet-based model.
-- **VoxRay Voice (F2):** Hands-free interaction using OpenAI Whisper (STT) and Facebook MMS-TTS for natural voice responses.
-- **VoxRay Intelligence:** Integrated with Google Gemini 2.0 Flash to explain diagnoses and answer medical questions in context.
-- **MLOps Pipeline:** Full TFX (TensorFlow Extended) pipeline for reproducible data processing and model training.
-- **Modern UI:** A premium, responsive React frontend with real-time audio visualization.
+**VoxRay AI** solves this by acting as a hands-free, intelligent assistant. It synergizes visual analysis with a voice-first interface, allowing doctors to interact with X-ray data, receive audio briefings, and access AI-driven second opinions without breaking focus. Built on a scalable **TFX (TensorFlow Extended)** pipeline, VoxRay AI offers a production-grade architecture for automated, explainable, and accessible medical diagnostics.
+
+## 🚀 Key Features
+
+- **👁️ VoxRay Vision (Computer Vision):**
+
+  - **Instant Pathology Detection:** Uses a custom-trained **ResNet50V2** model to classify 6+ chest and bone abnormalities (Pneumonia, Lung Cancer, Fractures, etc.) with real-time confidence scoring.
+  - **Visual Explainability:** Provides clear diagnostic confidence metrics to support clinical decision-making.
+
+- **🎙️ VoxRay Voice (Hands-Free Interface):**
+
+  - **Sterile Workflow Support:** Eliminates the need for keyboards using **OpenAI Whisper** (STT) for accurate medical dictation and **Facebook MMS-TTS** for natural voice responses.
+  - **Audio Briefings:** allowing doctors to "hear" the diagnosis while scrubbing in or examining patients.
+
+- **🧠 VoxRay Intelligence (Contextual AI):**
+
+  - **Intelligent Second Opinions:** Integrated with **Google Gemini 2.0 Flash** to explain diagnoses in natural language and answer complex medical follow-up questions.
+  - **Context-Aware:** The LLM understands the specific context of the current X-ray analysis, reducing hallucination and increasing relevance.
+
+- **🏭 Production MLOps Pipeline:**
+
+  - **End-to-End Automation:** A full **TFX (TensorFlow Extended)** pipeline manages data ingestion, validation, transformation, and model training, ensuring reproducibility and scalability.
+
+- **✨ Modern Clinical UI:**
+  - A premium, responsive interface built with **React, Vite, and TailwindCSS**, featuring real-time audio visualization and interactive image handling.
 
 ---
 
