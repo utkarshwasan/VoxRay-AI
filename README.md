@@ -2,7 +2,6 @@
 
 An advanced AI-powered medical console that combines **Vox** (Voice) and **Ray** (X-Ray) technologies to assist medical professionals.
 
-![Project Banner](https://via.placeholder.com/1200x400?text=VoxRay+AI)
 
 ## 🚀 Features
 
