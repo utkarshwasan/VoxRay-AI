@@ -37,7 +37,7 @@ In high-pressure medical environments, clinicians face two critical challenges: 
 ## 🛠️ Tech Stack
 
 - **Frontend:** React, Vite, TailwindCSS, Framer Motion
-- **Backend:** FastAPI, Uvicorn, Python 3.12
+- **Backend:** FastAPI, Uvicorn, Python 3.12 (API) / Python 3.9 (TFX Pipeline)
 - **AI/ML:** TensorFlow, PyTorch, Transformers (Hugging Face), TFX
 - **Models:** ResNet50V2 (Custom trained), Whisper Base (STT), MMS-TTS (TTS), Gemini 2.0 Flash (LLM)
 
@@ -48,7 +48,7 @@ In high-pressure medical environments, clinicians face two critical challenges: 
 ### Prerequisites
 
 - Node.js & npm
-- Python 3.10+ (Python 3.12 recommended for Backend)
+- Python 3.12 (for Backend) & Python 3.9 (for TFX in WSL)
 - WSL2 (Ubuntu) for TFX Pipeline (Optional, for training only)
 
 ### 1. Backend Setup
