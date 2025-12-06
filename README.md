@@ -104,8 +104,9 @@ Ensure you have copied the project to your WSL environment:
 
 ```bash
 # In Ubuntu Terminal
-mkdir -p ~/projects/medical\ console
-cp -r "/mnt/c/Users/witty/OneDrive/Desktop/Projects/medical console/"* ~/projects/medical\ console/
+mkdir -p ~/projects/voxray-ai
+# Replace /path/to/voxray-ai with your actual project location
+cp -r /path/to/voxray-ai/* ~/projects/voxray-ai/
 ```
 
 ### 2. Environment Setup
@@ -142,7 +143,7 @@ Execute the full training pipeline:
 
 ```bash
 # Important: Sync latest code changes from Windows if needed
-# cp -r "/mnt/c/Users/witty/OneDrive/Desktop/Projects/medical console/tfx_pipeline/"* ~/projects/medical\ console/tfx_pipeline/
+# cp -r /path/to/voxray-ai/tfx_pipeline/* ~/projects/voxray-ai/tfx_pipeline/
 
 python tfx_pipeline/run_pipeline.py
 ```
