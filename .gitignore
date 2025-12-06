@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# React Build
+voxray-ai/dist/
+voxray-ai/build/
+voxray-ai/node_modules/
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project Specific - Large Files
+consolidated_medical_data/
+logs/
+models/*.keras
+models/*.h5
+
+# Keep the models folder structure but ignore large files
+!models/.gitkeep
+
+# TFX & MLOps
+tfx_env/
+tfx_data/
+tfx_pipeline/pipeline_root/
+tfx_pipeline/serving_model/
+tfx_pipeline/metadata.db
+tfx_pipeline/__pycache__/
+tfx_user_code_Trainer.egg-info/
+*.tfrecord
+*.sqlite
+

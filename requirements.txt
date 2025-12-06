@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+python-multipart
+librosa
+soundfile
+torch
+tensorflow
+numpy
+pillow
+transformers
+datasets
+openai
+python-dotenv
+scipy

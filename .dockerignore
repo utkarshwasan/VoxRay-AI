@@ -1,0 +1,22 @@
+venv/
+__pycache__/
+.git/
+.gitignore
+voxray-ai/node_modules/
+voxray-ai/.git/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+.env
+
+# Large Data & Artifacts
+consolidated_medical_data/
+tfx_data/
+tfx_env/
+tfx_pipeline/pipeline_root/
+tfx_pipeline/serving_model/
+tfx_pipeline/metadata.db
+models/*.keras
+models/*.h5
+
