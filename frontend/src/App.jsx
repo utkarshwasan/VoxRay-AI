@@ -1,10 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Activity, Sparkles } from 'lucide-react';
+import { Routes, Route } from 'react-router-dom';
+import { UserButton } from '@stackframe/react';
 import XRaySection from './components/XRaySection';
 import VoiceSection from './components/VoiceSection';
+import Sidebar from './components/Sidebar';
+import Login from './pages/Login';
+import ProtectedRoute from './components/ProtectedRoute';
+import OAuthCallbackHandler from './components/OAuthCallbackHandler';
 
-// ... (Keep ParticleSystem and GradientOrbs code exactly as is) ...
 const ParticleSystem = () => {
   const [particles, setParticles] = useState([]);
   useEffect(() => {
@@ -56,12 +61,7 @@ const GradientOrbs = () => {
   );
 };
 
-import Sidebar from './components/Sidebar';
-
-// ... (Keep ParticleSystem and GradientOrbs code exactly as is) ...
-// (Omitted for brevity, assuming it's unchanged)
-
-function App() {
+function Dashboard() {
   const [diagnosisResult, setDiagnosisResult] = useState(null);
   const [recentScans, setRecentScans] = useState([]);
 
@@ -94,20 +94,24 @@ function App() {
           transition={{ duration: 0.6 }}
           className="sticky top-4 z-50 backdrop-blur-md bg-white/5 border border-white/10 rounded-2xl mx-4 mb-8 shadow-xl shadow-black/5"
         >
-          <div className="container mx-auto px-6 py-8 flex items-center gap-4">
-            {/* CHANGED: Back to Indigo/Purple Gradient */}
-            <div className="relative w-12 h-12 flex items-center justify-center rounded-xl bg-gradient-to-br from-indigo-400 to-purple-600 shadow-lg shadow-indigo-500/20">
-              <Activity className="w-7 h-7 text-white animate-spin-slow" />
+          <div className="container mx-auto px-6 py-8 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="relative w-12 h-12 flex items-center justify-center rounded-xl bg-gradient-to-br from-indigo-400 to-purple-600 shadow-lg shadow-indigo-500/20">
+                <Activity className="w-7 h-7 text-white animate-spin-slow" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+                  VoxRay AI
+                  <Sparkles className="w-5 h-5 text-indigo-400 animate-pulse" />
+                </h1>
+                <p className="text-indigo-200/80 text-sm font-medium">
+                  Test VoxRay Vision, Voice, and Intelligence models in one place
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-                VoxRay AI
-                <Sparkles className="w-5 h-5 text-indigo-400 animate-pulse" />
-              </h1>
-              <p className="text-indigo-200/80 text-sm font-medium">
-                Test VoxRay Vision, Voice, and Intelligence models in one place
-              </p>
-            </div>
+            
+            {/* Stack Auth User Button */}
+            <UserButton showUserInfo={false} />
           </div>
         </motion.header>
 
@@ -134,6 +138,19 @@ function App() {
         </footer>
       </div>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/handler/*" element={<OAuthCallbackHandler />} />
+      {/* Protected Routes */}
+      <Route element={<ProtectedRoute />}>
+        <Route path="/" element={<Dashboard />} />
+      </Route>
+    </Routes>
   );
 }
 

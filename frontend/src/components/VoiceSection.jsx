@@ -7,6 +7,7 @@ import clsx from 'clsx';
 import MagneticButton from './MagneticButton';
 import AudioVisualizer from './AudioVisualizer';
 import useTypewriter from '../hooks/useTypewriter';
+import { useUser } from '@stackframe/react';
 
 const VoiceSection = ({ currentDiagnosis }) => {
   // Lifted TTS State
@@ -88,12 +89,29 @@ const STTColumn = ({ onChatResponse, currentDiagnosis }) => {
   const [isRequestingPermission, setIsRequestingPermission] = useState(false);
   const [assistantReply, setAssistantReply] = useState("");
   
+  // Stack Auth user for authenticated requests
+  const user = useUser();
+  
   // Use Typewriter for Assistant Reply
   const typedReply = useTypewriter(assistantReply, 20);
   
   const fileInputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+
+  // Helper to get auth headers
+  const getAuthHeaders = async () => {
+    if (!user) return {};
+    try {
+      const authJson = await user.getAuthJson();
+      return authJson?.accessToken 
+        ? { 'x-stack-access-token': authJson.accessToken }
+        : {};
+    } catch (e) {
+      console.warn('Failed to get auth token', e);
+      return {};
+    }
+  };
 
   const startRecording = async () => {
     setIsRequestingPermission(true);
@@ -159,7 +177,7 @@ const STTColumn = ({ onChatResponse, currentDiagnosis }) => {
       const transcribedText = sttResponse.data.transcription;
       setTranscription(transcribedText);
 
-      // 2. Chat with LLM (with Context)
+      // 2. Chat with LLM (with Context) - PROTECTED ENDPOINT
       if (transcribedText) {
           console.log("🤖 Sending to LLM:", transcribedText);
           
@@ -170,9 +188,12 @@ const STTColumn = ({ onChatResponse, currentDiagnosis }) => {
             console.log("📎 Attaching Context:", contextStr);
           }
 
+          const authHeaders = await getAuthHeaders();
           const chatResponse = await axios.post('http://127.0.0.1:8000/chat', { 
             message: transcribedText,
             context: contextStr
+          }, {
+            headers: { ...authHeaders }
           });
           const reply = chatResponse.data.response;
           setAssistantReply(reply);

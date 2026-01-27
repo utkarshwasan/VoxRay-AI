@@ -11,10 +11,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# React Build
-voxray-ai/dist/
-voxray-ai/build/
-voxray-ai/node_modules/
+# React Build (updated paths)
+frontend/dist/
+frontend/build/
+frontend/node_modules/
 
 # VS Code
 .vscode/
@@ -26,20 +26,27 @@ Thumbs.db
 # Project Specific - Large Files
 consolidated_medical_data/
 logs/
-models/*.keras
-models/*.h5
+backend/models/*.keras
+backend/models/*.h5
+backend/models/serving/
 
 # Keep the models folder structure but ignore large files
-!models/.gitkeep
+!backend/models/.gitkeep
 
-# TFX & MLOps
+# TFX & MLOps (updated paths)
 tfx_env/
 tfx_data/
-tfx_pipeline/pipeline_root/
-tfx_pipeline/serving_model/
-tfx_pipeline/metadata.db
-tfx_pipeline/__pycache__/
+pipeline/tfx/pipeline_root/
+pipeline/tfx/serving_model*/
+pipeline/tfx/metadata.db
+pipeline/tfx/__pycache__/
 tfx_user_code_Trainer.egg-info/
 *.tfrecord
 *.sqlite
 
+# Model checkpoints
+*.pt
+*.ckpt
+
+# Agent
+.agent/

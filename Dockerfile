@@ -1,9 +1,10 @@
 FROM python:3.11-slim
 WORKDIR /app
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY api/ ./api/
-COPY models/ ./models/
-COPY voxray-ai/dist ./voxray-ai/dist
+COPY backend/ /app/backend/
+COPY consolidated_medical_data/ /app/consolidated_medical_data/
+COPY frontend/dist /app/frontend/dist
+ENV PYTHONPATH=/app
 EXPOSE 8000
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

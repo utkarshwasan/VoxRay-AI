@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, X, Activity, AlertCircle, CheckCircle, TrendingUp, FileUp } from 'lucide-react';
+import { Upload, X, Activity, AlertCircle, CheckCircle, TrendingUp, FileUp, Sparkles } from 'lucide-react';
 import axios from 'axios';
 import clsx from 'clsx';
 import MagneticButton from './MagneticButton';
@@ -8,6 +8,8 @@ import InteractiveXRayViewer from './InteractiveXRayViewer';
 import { ResultSkeleton } from './Skeleton';
 import ConfidenceGauge from './ConfidenceGauge';
 import Tooltip from './Tooltip';
+import { useUser } from '@stackframe/react';
+import { stackApp } from '../stack';
 
 const XRaySection = ({ onResultChange, selectedResult }) => {
   const [file, setFile] = useState(null);
@@ -15,16 +17,18 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState(null);
   const fileInputRef = useRef(null);
+  
+  // Explainability state
+  const [explainSrc, setExplainSrc] = useState(null);
+  const [explaining, setExplaining] = useState(false);
+
+  // Stack Auth user for authenticated requests
+  const user = useUser();
 
   // Sync with external selection (Sidebar)
   React.useEffect(() => {
     if (selectedResult) {
       setResult(selectedResult);
-      // We don't have the image for history items in this demo, so we keep the preview as is
-      // or clear it if it doesn't match. For now, let's leave the preview alone 
-      // or maybe clear it to avoid confusion if it doesn't match the result.
-      // But clearing it might look weird. 
-      // Let's just update the result card.
     }
   }, [selectedResult]);
 
@@ -53,8 +57,52 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
     setFile(null);
     setPreview(null);
     setResult(null);
+    setExplainSrc(null);
     if (onResultChange) onResultChange(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Helper to get auth headers
+  const getAuthHeaders = async () => {
+    try {
+      // Method 1: Try using stackApp directly
+      const currentUser = await stackApp.getUser();
+      
+      if (currentUser) {
+        // Try getAuthJson
+        if (typeof currentUser.getAuthJson === 'function') {
+          const authJson = await currentUser.getAuthJson();
+          const token = authJson?.accessToken || authJson?.access_token || authJson?.token;
+          if (token) {
+            return { 'x-stack-access-token': token };
+          }
+        }
+        
+        // Try getAuthHeaders
+        if (typeof currentUser.getAuthHeaders === 'function') {
+          const headers = await currentUser.getAuthHeaders();
+          if (headers && Object.keys(headers).length > 0) {
+            return headers;
+          }
+        }
+      }
+      
+      // Method 2: Try using the hook user
+      if (user) {
+        if (typeof user.getAuthJson === 'function') {
+          const authJson = await user.getAuthJson();
+          const token = authJson?.accessToken || authJson?.access_token;
+          if (token) {
+            return { 'x-stack-access-token': token };
+          }
+        }
+      }
+      
+      return {};
+    } catch (e) {
+      console.warn('Failed to get auth token', e);
+      return {};
+    }
   };
 
   const handleAnalyze = async () => {
@@ -65,17 +113,52 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
         const formData = new FormData();
         formData.append('image_file', file);
         
+        const authHeaders = await getAuthHeaders();
         const response = await axios.post('http://127.0.0.1:8000/predict/image', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
+            headers: { 'Content-Type': 'multipart/form-data', ...authHeaders }
         });
         setResult(response.data);
         if (onResultChange) onResultChange(response.data);
 
     } catch (error) {
         console.error("Analysis failed", error);
-        alert("Analysis failed. Ensure backend is running.");
+        if (error.response?.status === 401) {
+          alert("Authentication required. Please log in.");
+        } else {
+          alert("Analysis failed. Ensure backend is running.");
+        }
     } finally {
         setAnalyzing(false);
+    }
+  };
+
+  const handleExplain = async () => {
+    if (!file) return;
+    setExplaining(true);
+    setExplainSrc(null);
+    
+    try {
+        const formData = new FormData();
+        formData.append('image_file', file);
+        
+        const authHeaders = await getAuthHeaders();
+        const response = await axios.post('http://127.0.0.1:8000/predict/explain', formData, {
+            headers: { 'Content-Type': 'multipart/form-data', ...authHeaders }
+        });
+        
+        // Convert base64 to data URL
+        const heatmapDataUrl = `data:image/png;base64,${response.data.heatmap_b64}`;
+        setExplainSrc(heatmapDataUrl);
+
+    } catch (error) {
+        console.error("Explanation failed", error);
+        if (error.response?.status === 401) {
+          alert("Authentication required. Please log in.");
+        } else {
+          alert("Explanation generation failed. Check backend logs.");
+        }
+    } finally {
+        setExplaining(false);
     }
   };
 
@@ -106,7 +189,7 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
           <div className="flex flex-col gap-6">
             <div 
               className={clsx(
-                "relative min-h-[360px] rounded-2xl border-2 border-dashed transition-all duration-300 flex flex-col items-center justify-center p-6 group overflow-hidden",
+                "relative min-h-[440px] rounded-2xl border-2 border-dashed transition-all duration-300 flex flex-col items-center justify-center p-4 group overflow-visible",
                 preview ? "border-indigo-500/50 bg-black/20" : "border-white/20 bg-white/5 hover:border-indigo-400/50 hover:bg-white/10 hover:scale-[1.02]"
               )}
               onDragOver={(e) => e.preventDefault()}
@@ -132,6 +215,7 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
                       src={preview} 
                       alt="X-Ray Preview" 
                       onClose={clearFile}
+                      overlaySrc={explainSrc}
                     />
                   </motion.div>
                 ) : (
@@ -179,7 +263,42 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full animate-[shimmer_1.5s_infinite]" />
               )}
             </MagneticButton>
+
+            {/* Explain Diagnosis Button - appears after successful analysis */}
+            {result && file && (
+              <motion.button
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                disabled={explaining}
+                onClick={handleExplain}
+                className={clsx(
+                  "w-full h-10 rounded-lg font-medium text-white transition-all flex items-center justify-center gap-2 border",
+                  explaining 
+                    ? "opacity-50 cursor-not-allowed bg-slate-700 border-slate-600" 
+                    : "bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border-emerald-500/30 hover:from-emerald-500/30 hover:to-teal-500/30"
+                )}
+                aria-label="Explain diagnosis with Grad-CAM"
+              >
+                {explaining ? (
+                  <>
+                    <Sparkles className="w-4 h-4 animate-pulse" />
+                    <span>Generating Explanation...</span>
+                  </>
+                ) : explainSrc ? (
+                  <>
+                    <Sparkles className="w-4 h-4 text-emerald-400" />
+                    <span className="text-emerald-300">Explanation Active</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Explain Diagnosis</span>
+                  </>
+                )}
+              </motion.button>
+            )}
           </div>
+
 
           {/* Right Column: Results */}
           <div className="flex flex-col justify-center">

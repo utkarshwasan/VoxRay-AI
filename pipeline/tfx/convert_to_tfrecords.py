@@ -1,14 +1,19 @@
 import tensorflow as tf
 import os
 import glob
+from pathlib import Path
 from PIL import Image
 import numpy as np
 import io
 
+# Path resolution: pipeline/tfx/convert_to_tfrecords.py -> pipeline/tfx -> pipeline -> root
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
 # Define paths
-DATA_ROOT = os.path.join('consolidated_medical_data', 'train')
-OUTPUT_DIR = os.path.join('tfx_data', 'train')
-OUTPUT_FILE = os.path.join(OUTPUT_DIR, 'data.tfrecord')
+DATA_ROOT = str(BASE_DIR / 'consolidated_medical_data' / 'train')
+OUTPUT_DIR = str(BASE_DIR / 'tfx_data' / 'train')
+OUTPUT_FILE = str(Path(OUTPUT_DIR) / 'data.tfrecord')
+
 
 # Define class names (must match the folder structure)
 CLASS_NAMES = [

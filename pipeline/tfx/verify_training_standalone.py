@@ -2,6 +2,7 @@
 import tensorflow as tf
 import os
 import shutil
+from pathlib import Path
 from module_file import run_fn
 
 # Mock FnArgs to simulate TFX passing arguments
@@ -16,11 +17,11 @@ class MockFnArgs:
 def main():
     print("Starting standalone verification of training logic...")
     
-    # Paths
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(base_dir)
-    data_path = os.path.join(project_root, 'tfx_data', 'train', 'data.tfrecord')
-    serving_model_dir = os.path.join(base_dir, 'serving_model_standalone')
+    # Path resolution: pipeline/tfx/script.py -> pipeline/tfx -> pipeline -> root
+    BASE_DIR = Path(__file__).resolve().parent.parent.parent
+    data_path = str(BASE_DIR / 'tfx_data' / 'train' / 'data.tfrecord')
+    serving_model_dir = str(BASE_DIR / 'pipeline' / 'tfx' / 'serving_model_standalone')
+
     
     # Clean up previous run
     if os.path.exists(serving_model_dir):
@@ -32,13 +33,13 @@ def main():
         return
 
     # Create args
-    # We use the same file for train and eval for verification
+    # PRODUCTION: Use 355 steps/epoch to cover full dataset (11,342 images / 32 batch)
     args = MockFnArgs(
         train_files=[data_path],
         eval_files=[data_path],
         serving_model_dir=serving_model_dir,
-        train_steps=10,
-        eval_steps=5
+        train_steps=355,  # Full dataset coverage
+        eval_steps=50     # More robust evaluation
     )
     
     try:

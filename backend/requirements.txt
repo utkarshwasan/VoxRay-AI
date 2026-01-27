@@ -12,3 +12,7 @@ datasets
 openai
 python-dotenv
 scipy
+opencv-python-headless
+PyJWT[crypto]
+cryptography
+requests
