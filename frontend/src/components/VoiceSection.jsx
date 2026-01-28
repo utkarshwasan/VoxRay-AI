@@ -313,7 +313,8 @@ ChatMessage.displayName = 'ChatMessage';
 // --- MAIN CONTAINER ---
 
 const VoiceSection = ({ currentDiagnosis }) => {
-  const [status, setStatus] = useState('IDLE'); // IDLE, LISTENING, PROCESSING, SPEAKING
+  const [status, setStatus] = useState('IDLE');
+  const [backendStatus, setBackendStatus] = useState('unknown'); // 'ready', 'waking', 'error' // IDLE, LISTENING, PROCESSING, SPEAKING
   const [messages, setMessages] = useState([]);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioUrl, setAudioUrl] = useState(null);
@@ -714,6 +715,22 @@ const VoiceSection = ({ currentDiagnosis }) => {
     else if (status === 'SPEAKING') stopPlayback();
   }, [status, startRecording, stopRecording, stopPlayback]);
 
+  // Backend cold-start detection (Hugging Face Spaces)
+  useEffect(() => {
+    const wakeUpBackend = async () => {
+      try {
+        setBackendStatus('waking');
+        // Long timeout for cold start (60s)
+        await axios.get(`${API_BASE}/health`, { timeout: 60000 });
+        setBackendStatus('ready');
+      } catch (e) {
+        console.error("Backend failed to wake:", e);
+        setBackendStatus('error');
+      }
+    };
+    wakeUpBackend();
+  }, []);
+
   // Sterile mode: Auto-listen after AI response ends
   useEffect(() => {
     if (isSterileMode && status === 'IDLE' && messages.length > 0) {
@@ -746,6 +763,24 @@ const VoiceSection = ({ currentDiagnosis }) => {
       <div className="absolute -top-20 -right-20 w-80 h-80 bg-purple-600/20 rounded-full blur-[100px] animate-blob"></div>
       <div className="absolute -bottom-20 -left-20 w-80 h-80 bg-indigo-600/20 rounded-full blur-[100px] animate-blob delay-2000"></div>
       <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150 z-0"></div>
+
+      {/* Backend Status Messages */}
+      {backendStatus === 'waking' && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 bg-amber-500/20 border border-amber-500/30 rounded-lg backdrop-blur-sm">
+          <div className="flex items-center gap-2">
+            <RefreshCw className="w-3 h-3 text-amber-400 animate-spin" />
+            <span className="text-xs text-amber-200">Initializing AI Engines... (this may take 30s)</span>
+          </div>
+        </div>
+      )}
+      {backendStatus === 'error' && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 bg-red-500/20 border border-red-500/30 rounded-lg backdrop-blur-sm">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-3 h-3 text-red-400" />
+            <span className="text-xs text-red-200">Server Unavailable. Please refresh the page.</span>
+          </div>
+        </div>
+      )}
 
       {/* Hidden Audio Element */}
       <audio 

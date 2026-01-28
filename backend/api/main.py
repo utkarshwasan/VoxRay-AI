@@ -80,20 +80,37 @@ app = FastAPI(
     description="Serves F1 (Image) and F2 (Voice) models via REST API."
 )
 
+# --- CORS CONFIGURATION (Dynamic for Deployment) ---
+# 1. Define base allowed origins (localhost for development)
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:5175",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+    "http://127.0.0.1:5175",
+    "http://127.0.0.1:3000",
+]
+
+# 2. Add Hugging Face Internal Host (Auto-injected by Spaces)
+if os.getenv("SPACE_HOST"):
+    hf_origin = f"https://{os.getenv('SPACE_HOST')}"
+    ALLOWED_ORIGINS.append(hf_origin)
+    print(f"✅ Added Hugging Face origin: {hf_origin}")
+
+# 3. Add Vercel Frontend (From Secrets)
+frontend_url = os.getenv("FRONTEND_URL")
+if frontend_url:
+    ALLOWED_ORIGINS.append(frontend_url)
+    print(f"✅ Added frontend origin: {frontend_url}")
+
+print(f"🔒 CORS Allowed Origins: {ALLOWED_ORIGINS}")
+
+# 4. Apply Middleware (No wildcards for security)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173", 
-        "http://localhost:5174", 
-        "http://localhost:5175", 
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-        "http://127.0.0.1:5175",
-        "http://localhost:3000",
-        "https://voxray.ai",      # Production Frontend
-        "https://www.voxray.ai",  # Production Frontend
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
