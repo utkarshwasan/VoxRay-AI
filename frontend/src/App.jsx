@@ -133,8 +133,13 @@ function Dashboard() {
         </main>
 
         {/* Footer */}
-        <footer className="py-8 text-center text-indigo-200/40 text-sm">
-          <p>VoxRay AI Demo Console - For testing and demonstration purposes only</p>
+        {/* Footer */}
+        <footer className="mt-8 mb-4">
+          <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-2xl mx-4 py-4 flex flex-col items-center justify-center shadow-lg shadow-black/5">
+             <p className="text-indigo-200/60 text-xs font-medium tracking-wide">
+               VoxRay AI Console &bull; <span className="opacity-50">v1.0.0</span>
+             </p>
+          </div>
         </footer>
       </div>
     </div>

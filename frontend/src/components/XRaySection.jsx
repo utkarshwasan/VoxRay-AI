@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, X, Activity, AlertCircle, CheckCircle, TrendingUp, FileUp, Sparkles } from 'lucide-react';
+import { Upload, Activity, AlertCircle, CheckCircle, TrendingUp, FileUp, Sparkles, Info, BrainCircuit } from 'lucide-react';
 import axios from 'axios';
 import clsx from 'clsx';
 import MagneticButton from './MagneticButton';
@@ -16,6 +16,11 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
   const [preview, setPreview] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState(null);
+  
+  // New State for AI Analysis
+  const [aiAnalysis, setAiAnalysis] = useState("");
+  const [analyzingAI, setAnalyzingAI] = useState(false);
+
   const fileInputRef = useRef(null);
   
   // Explainability state
@@ -29,6 +34,9 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
   React.useEffect(() => {
     if (selectedResult) {
       setResult(selectedResult);
+      // If we select a result from history that doesn't have analysis stored, we might want to regenerate or leave blank.
+      // For now, we'll clear it unless it was passed (future enhancement)
+      setAiAnalysis(""); 
     }
   }, [selectedResult]);
 
@@ -38,6 +46,7 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
       setFile(selectedFile);
       setPreview(URL.createObjectURL(selectedFile));
       setResult(null);
+      setAiAnalysis("");
       if (onResultChange) onResultChange(null);
     }
   };
@@ -49,6 +58,7 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
       setFile(selectedFile);
       setPreview(URL.createObjectURL(selectedFile));
       setResult(null);
+      setAiAnalysis("");
       if (onResultChange) onResultChange(null);
     }
   };
@@ -58,46 +68,30 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
     setPreview(null);
     setResult(null);
     setExplainSrc(null);
+    setAiAnalysis("");
     if (onResultChange) onResultChange(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Helper to get auth headers
   const getAuthHeaders = async () => {
     try {
-      // Method 1: Try using stackApp directly
       const currentUser = await stackApp.getUser();
-      
       if (currentUser) {
-        // Try getAuthJson
         if (typeof currentUser.getAuthJson === 'function') {
           const authJson = await currentUser.getAuthJson();
           const token = authJson?.accessToken || authJson?.access_token || authJson?.token;
-          if (token) {
-            return { 'x-stack-access-token': token };
-          }
+          if (token) return { 'x-stack-access-token': token };
         }
-        
-        // Try getAuthHeaders
         if (typeof currentUser.getAuthHeaders === 'function') {
           const headers = await currentUser.getAuthHeaders();
-          if (headers && Object.keys(headers).length > 0) {
-            return headers;
-          }
+          if (headers && Object.keys(headers).length > 0) return headers;
         }
       }
-      
-      // Method 2: Try using the hook user
-      if (user) {
-        if (typeof user.getAuthJson === 'function') {
-          const authJson = await user.getAuthJson();
-          const token = authJson?.accessToken || authJson?.access_token;
-          if (token) {
-            return { 'x-stack-access-token': token };
-          }
-        }
+      if (user && typeof user.getAuthJson === 'function') {
+        const authJson = await user.getAuthJson();
+        const token = authJson?.accessToken || authJson?.access_token;
+        if (token) return { 'x-stack-access-token': token };
       }
-      
       return {};
     } catch (e) {
       console.warn('Failed to get auth token', e);
@@ -105,9 +99,34 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
     }
   };
 
+  // Function to fetch concise AI analysis
+  const generateAIAnalysis = async (diagnosisData) => {
+    setAnalyzingAI(true);
+    try {
+      const authHeaders = await getAuthHeaders();
+      // Construct a prompt for the LLM
+      const prompt = `The patient's X-Ray shows ${diagnosisData.diagnosis} with ${(diagnosisData.confidence * 100).toFixed(1)}% confidence. Provide a concise, professional 3-4 line clinical analysis summarising what this condition implies and standard next steps. Keep it strictly under 60 words.`;
+      
+      const response = await axios.post('http://127.0.0.1:8000/chat', { 
+        message: prompt,
+        context: `Diagnosis: ${diagnosisData.diagnosis}`
+      }, {
+        headers: { ...authHeaders }
+      });
+      
+      setAiAnalysis(response.data.response);
+    } catch (error) {
+      console.error("AI Analysis failed", error);
+      setAiAnalysis("Could not generate AI analysis at this time.");
+    } finally {
+      setAnalyzingAI(false);
+    }
+  };
+
   const handleAnalyze = async () => {
     if (!file) return;
     setAnalyzing(true);
+    setAiAnalysis(""); // Clear previous
     
     try {
         const formData = new FormData();
@@ -117,8 +136,13 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
         const response = await axios.post('http://127.0.0.1:8000/predict/image', formData, {
             headers: { 'Content-Type': 'multipart/form-data', ...authHeaders }
         });
-        setResult(response.data);
-        if (onResultChange) onResultChange(response.data);
+        
+        const data = response.data;
+        setResult(data);
+        if (onResultChange) onResultChange(data);
+        
+        // Trigger AI Analysis after successful prediction
+        generateAIAnalysis(data);
 
     } catch (error) {
         console.error("Analysis failed", error);
@@ -146,17 +170,12 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
             headers: { 'Content-Type': 'multipart/form-data', ...authHeaders }
         });
         
-        // Convert base64 to data URL
         const heatmapDataUrl = `data:image/png;base64,${response.data.heatmap_b64}`;
         setExplainSrc(heatmapDataUrl);
 
     } catch (error) {
         console.error("Explanation failed", error);
-        if (error.response?.status === 401) {
-          alert("Authentication required. Please log in.");
-        } else {
-          alert("Explanation generation failed. Check backend logs.");
-        }
+        alert("Explanation generation failed.");
     } finally {
         setExplaining(false);
     }
@@ -176,7 +195,6 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
       <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/5 to-purple-500/5 rounded-2xl blur-xl" />
       <div className="relative glass-panel bg-noise rounded-2xl p-8 overflow-hidden">
         
-        {/* Section Header */}
         <div className="flex items-center gap-4 mb-8">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-400 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
             <Activity className="w-6 h-6 text-white" />
@@ -185,7 +203,7 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Left Column: Upload */}
+          {/* Left Column: Upload (Unchanged) */}
           <div className="flex flex-col gap-6">
             <div 
               className={clsx(
@@ -259,12 +277,8 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
               ) : (
                 <span>Analyze X-Ray</span>
               )}
-              {analyzing && (
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full animate-[shimmer_1.5s_infinite]" />
-              )}
             </MagneticButton>
 
-            {/* Explain Diagnosis Button - appears after successful analysis */}
             {result && file && (
               <motion.button
                 initial={{ opacity: 0, y: 10 }}
@@ -277,7 +291,6 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
                     ? "opacity-50 cursor-not-allowed bg-slate-700 border-slate-600" 
                     : "bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border-emerald-500/30 hover:from-emerald-500/30 hover:to-teal-500/30"
                 )}
-                aria-label="Explain diagnosis with Grad-CAM"
               >
                 {explaining ? (
                   <>
@@ -299,26 +312,16 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
             )}
           </div>
 
-
           {/* Right Column: Results */}
           <div className="flex flex-col justify-center">
             <AnimatePresence mode="wait">
               {analyzing ? (
-                <motion.div
-                  key="skeleton"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                >
+                <motion.div key="skeleton" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                   <ResultSkeleton />
                 </motion.div>
               ) : result ? (
-                <motion.div
-                  key="result"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="space-y-6"
-                >
+                <motion.div key="result" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
+                  
                   {/* Primary Finding Badge */}
                   <motion.div 
                     initial={{ scale: 0.95, opacity: 0 }}
@@ -344,20 +347,47 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
                     </div>
                   </motion.div>
 
-                  {/* Detailed Analysis */}
+                  {/* Enhanced Analysis Section */}
                   <div>
                     <h4 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
-                      <span className="w-1 h-5 bg-indigo-500 rounded-full" />
-                      Analysis Details
+                      <BrainCircuit className="w-5 h-5 text-indigo-400" />
+                      AI Analysis Details
                     </h4>
-                    <div className="space-y-3">
-                      <DiagnosisCard 
-                        label={result.diagnosis} 
-                        confidence={result.confidence} 
-                        severity={severity}
-                        index={0}
-                      />
+                    
+                    <div className="relative overflow-hidden rounded-xl bg-black/20 border border-white/10 p-5 transition-colors">
+                        {analyzingAI ? (
+                            <div className="flex items-center gap-3 text-indigo-200/60 animate-pulse">
+                                <Sparkles className="w-4 h-4" />
+                                <span className="text-sm">Generating concise clinical summary...</span>
+                            </div>
+                        ) : aiAnalysis ? (
+                            <div className="prose prose-invert prose-sm max-w-none">
+                                <p className="text-indigo-100/90 leading-relaxed text-sm">
+                                    {aiAnalysis}
+                                </p>
+                            </div>
+                        ) : (
+                            <p className="text-white/40 text-sm italic">Analysis will appear here after processing.</p>
+                        )}
+                        
+                        {/* Shimmer Effect while analyzing */}
+                        {analyzingAI && (
+                             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full animate-[shimmer_1.5s_infinite]" />
+                        )}
                     </div>
+
+                    {/* Disclaimer / Caution Box */}
+                    <motion.div 
+                        initial={{ opacity: 0, y: 5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.5 }}
+                        className="mt-4 flex gap-3 items-start p-3 rounded-lg bg-amber-500/10 border border-amber-500/20"
+                    >
+                        <Info className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-amber-200/80 leading-relaxed">
+                            <span className="font-bold text-amber-400">Disclaimer:</span> I am an AI assistant, not a doctor. This analysis is generated for informational purposes only and may contain errors. Please consult a qualified medical professional for a detailed diagnosis and treatment plan.
+                        </p>
+                    </motion.div>
                   </div>
                 </motion.div>
               ) : (
@@ -377,59 +407,6 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
         </div>
       </div>
     </section>
-  );
-};
-
-const MEDICAL_DEFINITIONS = {
-  "PNEUMONIA": "Infection that inflames air sacs in one or both lungs, which may fill with fluid.",
-  "NORMAL": "No significant abnormalities detected in the chest X-ray.",
-  "INFILTRATION": "A substance denser than air, such as pus, blood, or protein, which lingers within the parenchyma of the lungs.",
-  "ATELECTASIS": "Complete or partial collapse of the entire lung or area (lobe) of the lung.",
-  "EFFUSION": "A buildup of fluid between the tissues that line the lungs and the chest.",
-  "NODULE": "A small abnormal growth in the lung, often benign but requires monitoring.",
-  "PNEUMOTHORAX": "A collapsed lung. This occurs when air leaks into the space between your lung and chest wall.",
-  "CONSOLIDATION": "A region of normally compressible lung tissue that has filled with liquid instead of air."
-};
-
-import useTypewriter from '../hooks/useTypewriter';
-
-const DiagnosisCard = ({ label, confidence, severity, index }) => {
-  const cleanLabel = label.replace(/^\d+_/, '').replace(/_/g, ' ');
-  const typedLabel = useTypewriter(cleanLabel, 50);
-  const definition = MEDICAL_DEFINITIONS[cleanLabel.toUpperCase()] || "Medical condition detected in X-Ray analysis.";
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: -20, scale: 0.95 }}
-      animate={{ opacity: 1, x: 0, scale: 1 }}
-      transition={{ delay: index * 0.1 + 0.3, type: "spring", stiffness: 300, damping: 25 }}
-      whileHover={{ scale: 1.02, x: 4, backgroundColor: "rgba(255, 255, 255, 0.12)" }}
-      className="relative overflow-hidden rounded-xl bg-black/20 border border-white/10 p-4 transition-colors group flex items-center justify-between gap-4"
-    >
-      <div className="flex-grow">
-        <div className="flex items-center gap-3 mb-2">
-          <severity.icon className={clsx("w-5 h-5", severity.text)} />
-          <Tooltip content={definition}>
-            <span className="font-medium text-white text-lg border-b border-dashed border-white/30 cursor-help">
-              {typedLabel}
-              <span className="animate-pulse">|</span>
-            </span>
-          </Tooltip>
-        </div>
-        <p className={clsx("text-sm", severity.text)}>{severity.label}</p>
-      </div>
-
-      <div className="flex-shrink-0">
-        <ConfidenceGauge 
-          value={confidence} 
-          color={severity.text.replace('text-', 'text-')} 
-          size={64}
-        />
-      </div>
-
-      {/* Shimmer Overlay */}
-      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:animate-[shimmer_2s_infinite]" />
-    </motion.div>
   );
 };
 

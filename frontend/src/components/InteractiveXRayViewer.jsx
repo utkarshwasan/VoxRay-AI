@@ -93,10 +93,6 @@ const InteractiveXRayViewer = ({ src, alt, onClose, overlaySrc }) => {
     if (!containerRef.current || !imageRef.current) return proposedPan;
 
     const containerRec = containerRef.current.getBoundingClientRect();
-    // Native image size isn't directly available unless we load it, 
-    // but we can use the current rendered size if zoom was 1
-    // A better approach for exact constraints is to know naturalWidth/Height.
-    // tailored for the typical simplified viewer: allow dragging until edge acts as center
     
     // Simple constraint: don't let the image fly completely off screen
     // Allow moving the image until its center hits the edge of the container
@@ -147,37 +143,19 @@ const InteractiveXRayViewer = ({ src, alt, onClose, overlaySrc }) => {
     // 1. Calculate new Target Zoom
     const ZOOM_SENSITIVITY = 0.001;
     const delta = -e.deltaY * ZOOM_SENSITIVITY;
-    const newTargetZoom = Math.max(0.5, Math.min(5.0, zoom + delta)); // Simplified: direct update for now or use hook logic
-    
-    // We will manually update zoom here to sync with pan, 
-    // effectively bypassing the smooth loop for the *calculation* but we can still use it if we want.
-    // For the specific "Zoom to Cursor" requirement, direct calculation is often more robust than 
-    // trying to sync two independent animation loops (pan & zoom).
-    
-    // Let's implement the precise Zoom-To-Cursor logic here directly:
+    const newTargetZoom = Math.max(0.5, Math.min(5.0, zoom + delta)); 
     
     // Calculate mouse position relative to center (0,0 of pan coordinates)
-    // The image center is at (containerWidth/2 + pan.x, containerHeight/2 + pan.y)
-    // Mouse relative to Image Center:
     const containerCenterX = rect.width / 2;
     const containerCenterY = rect.height / 2;
     
-    // This is the vector from the center of the container to the mouse
     const mouseFromCenterX = mouseX - containerCenterX;
     const mouseFromCenterY = mouseY - containerCenterY;
     
-    // And from the center of the *image* (which is offset by pan)
-    // const mouseFromImageCenterX = mouseFromCenterX - pan.x;
-    // const mouseFromImageCenterY = mouseFromCenterY - pan.y;
-
     // Calculate Zoom Ratio
     const zoomRatio = newTargetZoom / zoom;
 
     // New Pan:
-    // We want the point under the mouse to stay under the mouse.
-    // (Point - Newcenter) = (Point - OldCenter) * ratio
-    // ... logic simplifies to adjusting pan by the displacement of the point relative to center
-    
     const newPanX = pan.x - (mouseFromCenterX - pan.x) * (zoomRatio - 1);
     const newPanY = pan.y - (mouseFromCenterY - pan.y) * (zoomRatio - 1);
 
@@ -197,10 +175,16 @@ const InteractiveXRayViewer = ({ src, alt, onClose, overlaySrc }) => {
   }, []);
 
   // --- Styles ---
-  const imageStyle = {
-    filter: `brightness(${brightness}%) contrast(${contrast}%)`,
+  
+  // 1. Transform applies to the CONTAINER (moves both images together)
+  const transformStyle = {
     transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
     cursor: isDragging ? 'grabbing' : 'grab',
+  };
+
+  // 2. Filters apply to BOTH images
+  const imageFilterStyle = {
+    filter: `brightness(${brightness}%) contrast(${contrast}%)`,
   };
 
   return (
@@ -238,31 +222,38 @@ const InteractiveXRayViewer = ({ src, alt, onClose, overlaySrc }) => {
             <ControlBtn onClick={handleReset} icon={RotateCcw} label="Reset View" />
           </div>
 
-          <div className="relative w-full h-full flex items-center justify-center pointer-events-none">
-              {/* Wrapper div to center the transformed image */}
-              <img 
-                ref={imageRef}
-                src={src} 
-                alt={alt} 
-                className="max-h-[80%] max-w-[80%] w-auto h-auto object-contain rounded-lg shadow-2xl pointer-events-auto select-none" 
-                style={imageStyle}
-                draggable={false}
-              />
-              {/* Grad-CAM Overlay */}
-              {overlaySrc && (
-                <img
-                  src={overlaySrc}
-                  alt="Explanation Heatmap"
-                  className="absolute inset-0 w-full h-full object-contain rounded-lg pointer-events-none"
-                  style={{ 
-                    ...imageStyle, // Apply same transform to overlay
-                    opacity: overlayOpacity,
-                    mixBlendMode: 'overlay',
-                    filter: 'none' // Don't double apply brightness/contrast to heatmap usually, or maybe yes? default to no
-                  }}
-                  draggable={false}
-                />
-              )}
+          <div 
+            className="relative w-full h-full flex items-center justify-center pointer-events-none"
+            style={transformStyle}
+          >
+              {/* CSS GRID: Forces perfect overlap */}
+              <div className="grid place-items-center w-full h-full">
+                  
+                  {/* Layer 1: Base X-Ray */}
+                  <img 
+                    ref={imageRef}
+                    src={src} 
+                    alt={alt} 
+                    className="col-start-1 row-start-1 max-h-[80%] max-w-[80%] w-auto h-auto object-contain rounded-lg shadow-2xl pointer-events-auto select-none" 
+                    style={imageFilterStyle} // Apply Brightness/Contrast
+                    draggable={false}
+                  />
+
+                  {/* Layer 2: Heatmap Overlay */}
+                  {overlaySrc && (
+                    <img
+                      src={overlaySrc}
+                      alt="Explanation Heatmap"
+                      className="col-start-1 row-start-1 max-h-[80%] max-w-[80%] w-auto h-auto object-contain rounded-lg pointer-events-none z-10"
+                      style={{ 
+                        ...imageFilterStyle, // CRITICAL: Inherit filters so it matches the base layer
+                        opacity: overlayOpacity, 
+                        mixBlendMode: 'normal' // No special blend mode needed (backend did it)
+                      }}
+                      draggable={false}
+                    />
+                  )}
+              </div>
           </div>
       </div>
 

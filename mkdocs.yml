@@ -1,0 +1,80 @@
+site_name: VoxRay AI Documentation
+site_url: https://docs.voxray.ai
+repo_url: https://github.com/utkarshwasan/VoxRay-AI
+repo_name: utkarshwasan/VoxRay-AI
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.copy
+
+plugins:
+  - search
+  - mermaid2
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - pymdownx.mark
+  - attr_list
+  - md_in_html
+  - tables
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Quick Start: getting-started/quick-start.md
+      - Installation: getting-started/installation.md
+      - Prerequisites: getting-started/prerequisites.md
+  - Architecture:
+      - Overview: architecture/README.md
+      - System Design: architecture/system-design.md
+  - API Reference:
+      - Overview: api/README.md
+      - Endpoints:
+          - Predict: api/endpoints/predict.md
+          - Transcribe: api/endpoints/transcribe.md
+  - Guides:
+      - Development: guides/development/README.md
+  - Reference:
+      - Environment Variables: reference/environment-variables.md
+  - Troubleshooting:
+      - Common Issues: troubleshooting/common-issues.md
+  - Contributing: contributing/README.md
+  - Security: security/README.md
+  - Changelog: changelog/README.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/utkarshwasan/VoxRay-AI

@@ -30,3 +30,74 @@
 .animate-pulse-ring {
   animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+
+/* --- Super Orb Keyframe Animations --- */
+@keyframes blob-float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -40px) scale(1.1); }
+  66% { transform: translate(-20px, 20px) scale(0.9); }
+}
+
+@keyframes particle-rise {
+  0% { opacity: 0; transform: translateY(0) scale(0.5); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-60px) scale(0); }
+}
+
+/* --- Animation Classes --- */
+.animate-blob { 
+  animation: blob-float 12s infinite ease-in-out; 
+}
+
+.delay-2000 { 
+  animation-delay: 2s; 
+}
+
+/* --- Scrollbar Utilities --- */
+/* Hide scrollbar but keep functionality */
+.hide-scroll::-webkit-scrollbar {
+  display: none; 
+}
+.hide-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Smooth fade mask for chat stream */
+.scroll-mask {
+  mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
+}
+
+/* --- Accessibility Focus --- */
+button:focus-visible {
+  outline: 2px solid #6366f1; /* Indigo-500 */
+  outline-offset: 2px;
+}
+
+.delay-4000 {
+  animation-delay: 4s;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .animate-blob,
+  .animate-pulse,
+  .animate-spin {
+    animation: none !important;
+  }
+}
+
+/* Screen reader only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
