@@ -1,44 +1,35 @@
-# Stage 1: Build the React Frontend
-FROM node:20-alpine as frontend-builder
-WORKDIR /app/frontend
-
-# Copy package files first for better caching
-COPY frontend/package*.json ./
-RUN npm ci
-
-# Copy frontend source and build
-COPY frontend/ ./
-RUN npm run build
-
-# Stage 2: Setup Python Backend & Runtime
-FROM python:3.11-slim
+FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install system dependencies for audio processing
-# libsndfile1: Required by librosa/soundfile
-# ffmpeg: Required by edge-tts and general audio handling
+# Install system dependencies (Audio + TF support)
 RUN apt-get update && apt-get install -y \
-    libsndfile1 \
-    ffmpeg \
+    libsndfile1 ffmpeg libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Create user (Hugging Face Security Requirement)
+RUN useradd -m -u 1000 user && mkdir -p /app && chown -R user:user /app
 
-# Copy Backend Code
-COPY backend/ /app/backend/
+# Switch to user
+USER user
+ENV HOME=/home/user \
+    PATH=/home/user/.local/bin:$PATH \
+    PYTHONUNBUFFERED=1
 
-# Copy Built Frontend from Stage 1
-COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
+# Install dependencies (Cached layer)
+COPY --chown=user:user backend/requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
 
-# Set Environment Variables
-ENV PYTHONPATH=/app
-ENV PORT=8000
+# Copy Application Code
+COPY --chown=user:user backend/ ./backend/
+COPY --chown=user:user consolidated_medical_data/ ./consolidated_medical_data/
 
-# Expose Port
-EXPOSE 8000
+# Hugging Face Port
+EXPOSE 7860
 
-# Run Uvicorn Server
-CMD ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Robust Health Check (Standard Lib)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:7860/health', timeout=5)" || exit 1
+
+# Launch
+CMD ["python", "-m", "uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "7860", "--workers", "1"]
