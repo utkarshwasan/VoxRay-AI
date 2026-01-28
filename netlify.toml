@@ -1,0 +1,16 @@
+[build]
+  # This tells Netlify to enter the 'frontend' folder before doing anything
+  base = "frontend"
+  
+  # This tells Netlify to run the build command inside that folder
+  command = "npm run build"
+  
+  # This tells Netlify where the built files are (relative to 'base')
+  publish = "dist"
+
+# This part is CRITICAL for React apps (SPA routing)
+# Without this, refreshing a page like /login will give a 404 error
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

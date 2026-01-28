@@ -77,17 +77,25 @@ Expected response:
 
 ---
 
-## Frontend: Vercel
+## Frontend: Netlify
 
 ### 1. Import Repository
 
-1. Go to [Vercel Dashboard](https://vercel.com/dashboard)
-2. Click "Add New..." → "Project"
-3. Import your GitHub repository
+1. Go to [Netlify Dashboard](https://app.netlify.com/)
+2. "Add new site" → "Import an existing project"
+3. Select GitHub → `VoxRay-AI`
 
-### 2. Configure Environment Variables
+### 2. Build Configuration
 
-In Project Settings → Environment Variables:
+Netlify will automatically detect settings from your `netlify.toml` file:
+
+- **Base directory**: `frontend`
+- **Build command**: `npm run build`
+- **Publish directory**: `dist`
+
+### 3. Environment Variables
+
+In Site Settings → **Environment Variables**:
 
 | Variable Name                       | Value                                      | Description                     |
 | ----------------------------------- | ------------------------------------------ | ------------------------------- |
@@ -95,24 +103,17 @@ In Project Settings → Environment Variables:
 | `VITE_STACK_PUBLISHABLE_CLIENT_KEY` | Your Stack client key                      | Stack Auth public key           |
 | `VITE_STACK_PROJECT_ID`             | Your Stack project ID                      | Stack Auth project              |
 
-### 3. Build Configuration
-
-Vercel should auto-detect:
-
-- **Framework**: Vite
-- **Build Command**: `npm run build`
-- **Output Directory**: `dist`
-- **Install Command**: `npm install`
-
 ### 4. Deploy
 
-Click "Deploy" and wait for build to complete.
+Click "Deploy site".
 
 Your frontend will be at:
 
 ```
-https://voxray-ai.vercel.app
+https://voxray-ai.netlify.app
 ```
+
+(You can rename this in Domain Settings)
 
 ---
 
