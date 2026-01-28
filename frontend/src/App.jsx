@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import { Activity, Sparkles } from 'lucide-react';
 import { Routes, Route } from 'react-router-dom';
@@ -11,18 +12,14 @@ import ProtectedRoute from './components/ProtectedRoute';
 import OAuthCallbackHandler from './components/OAuthCallbackHandler';
 
 const ParticleSystem = () => {
-  const [particles, setParticles] = useState([]);
-  useEffect(() => {
-    const newParticles = Array.from({ length: 30 }).map((_, i) => ({
-      id: i,
-      x: Math.random() * 100,
-      y: Math.random() * 100,
-      size: Math.random() * 4 + 2,
-      duration: Math.random() * 10 + 10,
-      delay: Math.random() * 5,
-    }));
-    setParticles(newParticles);
-  }, []);
+  const [particles] = useState(() => Array.from({ length: 30 }).map((_, i) => ({
+    id: i,
+    x: Math.random() * 100,
+    y: Math.random() * 100,
+    size: Math.random() * 4 + 2,
+    duration: Math.random() * 10 + 10,
+    delay: Math.random() * 5,
+  })));
   return (
     <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
       {particles.map((p) => (

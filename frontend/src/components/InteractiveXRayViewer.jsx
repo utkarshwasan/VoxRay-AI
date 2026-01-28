@@ -1,5 +1,6 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { ZoomIn, ZoomOut, RotateCcw, X, Sun, Contrast, Sparkles } from 'lucide-react';
+// eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSmoothPan } from '../hooks/useSmoothPan';
 import { useSmoothZoom } from '../hooks/useSmoothZoom';
@@ -7,6 +8,7 @@ import { useSmoothZoom } from '../hooks/useSmoothZoom';
 /**
  * Reusable image control slider component with label and value display
  */
+// eslint-disable-next-line no-unused-vars
 const ImageControl = ({ icon: Icon, label, value, onChange, min, max, colorClass, unit = '%' }) => (
   <div className="flex flex-col gap-2 min-w-[140px] w-full">
     {/* Header: Label + Inline Value */}
@@ -46,6 +48,7 @@ const ImageControl = ({ icon: Icon, label, value, onChange, min, max, colorClass
 /**
  * Zoom control button component
  */
+// eslint-disable-next-line no-unused-vars
 const ControlBtn = ({ onClick, icon: Icon, label }) => (
   <motion.button
     whileHover={{ scale: 1.1 }}
@@ -84,7 +87,7 @@ const InteractiveXRayViewer = ({ src, alt, onClose, overlaySrc }) => {
   });
 
   // Note: we're passing setZoom to the hook, but we also manage some zoom logic here for wheel
-  const { zoom: smoothZoom, targetZoomRef } = useSmoothZoom(1.0, setZoom);
+  const { targetZoomRef: _targetZoomRef } = useSmoothZoom(1.0, setZoom);
 
   // --- Helpers ---
   

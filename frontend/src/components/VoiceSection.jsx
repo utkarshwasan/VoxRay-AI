@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+// eslint-disable-next-line no-unused-vars
+import { AnimatePresence, motion } from 'framer-motion';
 import { Mic, Square, Sparkles, Activity, RefreshCw, Volume2, AlertCircle } from 'lucide-react';
 import axios from 'axios';
 import AudioRecorderPolyfill from 'audio-recorder-polyfill';
@@ -67,12 +68,12 @@ const VoiceOrb = React.memo(({ status, recordingTime, onClick, debugRMS, showDeb
     }
   };
 
-  // Memoize particles to prevent jitter on re-render
-  const particles = useMemo(() => [...Array(8)].map((_, i) => ({
+  // Initialize particles once using state lazy initializer to ensure purity
+  const [particles] = useState(() => [...Array(8)].map((_, i) => ({
     id: i,
     left: `${15 + Math.random() * 70}%`,
     delay: i * 0.3
-  })), []);
+  })));
 
   return (
     <div className="relative w-24 h-24 flex items-center justify-center">
@@ -217,7 +218,6 @@ const KaraokeText = React.memo(({ text }) => {
   const [revealedIndex, setRevealedIndex] = useState(-1);
 
   useEffect(() => {
-    setRevealedIndex(-1);
     if (words.length === 0) return;
 
     let index = -1;
@@ -279,7 +279,7 @@ const ChatMessage = React.memo(({ msg, onRetry, isRetrying }) => {
             : 'bg-gradient-to-br from-indigo-600 to-purple-700 border-white/10 rounded-tr-none text-white'
         }
       `}>
-        {isAI && msg.isNew ? <KaraokeText text={msg.text} /> : <p>{msg.text}</p>}
+        {isAI && msg.isNew ? <KaraokeText key={msg.text} text={msg.text} /> : <p>{msg.text}</p>}
         
         {/* Retry Button for Errors */}
         {isError && msg.retryable && msg.originalInput && (

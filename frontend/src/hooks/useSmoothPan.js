@@ -9,7 +9,6 @@ const DEFAULT_PAN_CONFIG = {
 
 export const useSmoothPan = (config = DEFAULT_PAN_CONFIG) => {
   const velocityRef = useRef({ x: 0, y: 0 });
-  const lastDeltaRef = useRef({ x: 0, y: 0 });
   
   const calculatePanDelta = (rawDeltaX, rawDeltaY) => {
     // Apply deadzone

@@ -69,9 +69,6 @@ export const useSmoothZoom = (initialZoom = 1.0, setZoom) => {
     const containerCenterX = containerRect.width / 2;
     const containerCenterY = containerRect.height / 2;
     
-    const mouseFromCenterX = mouseX - containerCenterX - currentPan.x;
-    const mouseFromCenterY = mouseY - containerCenterY - currentPan.y;
-    
     // Zoom factor change
     const zoomRatio = targetZoom / currentZoom;
     
@@ -97,5 +94,5 @@ export const useSmoothZoom = (initialZoom = 1.0, setZoom) => {
     return { pan: { x: newPanX, y: newPanY }, zoom: targetZoom };
   };
   
-  return { handleWheel, zoom: currentZoomRef.current, zoomToPoint, targetZoomRef };
+  return { handleWheel, zoomToPoint, targetZoomRef };
 };

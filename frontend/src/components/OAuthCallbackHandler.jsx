@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { StackHandler, useUser } from '@stackframe/react';
 import { stackApp } from '../stack';
@@ -7,7 +7,7 @@ export default function OAuthCallbackHandler() {
   const navigate = useNavigate();
   const location = useLocation();
   const user = useUser();
-  const [isProcessing, setIsProcessing] = useState(true);
+  // const [isProcessing, setIsProcessing] = useState(true); // Removed unused state
 
   // Check if OAuth params exist
   const searchParams = new URLSearchParams(location.search);
@@ -35,14 +35,13 @@ export default function OAuthCallbackHandler() {
   // Fallback timeout: if StackHandler doesn't complete in 5 seconds, redirect anyway
   useEffect(() => {
     const timeout = setTimeout(() => {
-      if (isProcessing) {
+      // isProcessing was used here to gate, but if we assume fallback always runs if not unmounted/navigate happened:
         console.log('Fallback redirect triggered after timeout');
         navigate('/', { replace: true });
-      }
     }, 5000);
 
     return () => clearTimeout(timeout);
-  }, [isProcessing, navigate]);
+  }, [navigate]);
 
   // If params are missing, show redirect message
   if (!hasCode || !hasState) {

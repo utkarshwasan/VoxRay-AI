@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+// eslint-disable-next-line no-unused-vars
+import { AnimatePresence, motion } from 'framer-motion';
 import { Upload, Activity, AlertCircle, CheckCircle, TrendingUp, FileUp, Sparkles, Info, BrainCircuit } from 'lucide-react';
 import axios from 'axios';
 import clsx from 'clsx';

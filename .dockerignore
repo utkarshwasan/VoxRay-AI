@@ -1,22 +1,54 @@
-venv/
-__pycache__/
+# Version Control
 .git/
 .gitignore
-voxray-ai/node_modules/
-voxray-ai/.git/
+
+# Python Environments & Cache
+venv/
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
-.DS_Store
-.env
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
 
-# Large Data & Artifacts
+# Environment Variables
+.env
+.env.*
+
+# Node.js
+frontend/node_modules/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Large Data & Artifacts (CRITICAL TO IGNORE)
 consolidated_medical_data/
 tfx_data/
 tfx_env/
-tfx_pipeline/pipeline_root/
-tfx_pipeline/serving_model/
-tfx_pipeline/metadata.db
-models/*.keras
-models/*.h5
+pipeline/tfx/pipeline_root/
+pipeline/tfx/serving_model/
+pipeline/tfx/metadata.db
+pipeline/tfx/*.keras
+backend/models/*.keras
+backend/models/*.h5
 
+# Local Build Artifacts (Let Docker build freshly)
+frontend/dist/
+frontend/build/
+site/
+
+# IDEs & System
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Agent Files
+.agent/
+brain/
+skills/
+REFERENCE.md
+.gemini/

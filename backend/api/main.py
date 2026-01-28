@@ -90,12 +90,19 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
         "http://127.0.0.1:5175",
-        "http://127.0.0.1:3000",
+        "http://localhost:3000",
+        "https://voxray.ai",      # Production Frontend
+        "https://www.voxray.ai",  # Production Frontend
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for load balancers."""
+    return {"status": "healthy", "version": "1.0.0"}
 
 @app.on_event("startup")
 def load_models():
