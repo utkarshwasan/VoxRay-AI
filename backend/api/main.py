@@ -5,49 +5,47 @@ import soundfile as sf
 import torch
 import tensorflow as tf
 import numpy as np
+import os
+import re
 from pathlib import Path
 from PIL import Image
+from dotenv import load_dotenv
+
+# FastAPI
 from fastapi import FastAPI, UploadFile, File, HTTPException, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, StreamingResponse
+
+# 3rd Party
 from pydantic import BaseModel
-from backend.api.deps import get_current_user
 from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
-from datasets import load_dataset
 from tensorflow.keras.applications.resnet_v2 import preprocess_input
 from typing import List, Optional
+import edge_tts
+import jwt
+import requests
+from jwt import PyJWKClient
+
+# Local deps
+from backend.api.deps import get_current_user
 from backend.api.medical_context import (
     get_condition_info,
     format_context_for_prompt,
     get_knowledge_base_info,
 )
 
-medical_model = None
-IMG_HEIGHT = 224
-IMG_WIDTH = 224
+# --- LOAD ENVIRONMENT VARIABLES ---
+load_dotenv()  # Load .env if present
 
-stt_processor = None
-stt_model = None
-
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
-
-# Edge TTS Configuration (cloud-based, no local model)
-import edge_tts
-import re
-import os
-
+# These will pull directly from your Hugging Face "Secrets" and "Variables"
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+STACK_PROJECT_ID = os.getenv("STACK_PROJECT_ID")
 TTS_VOICE = os.getenv("TTS_VOICE", "en-US-ChristopherNeural")
 
+
 # --- Stack Auth Manual Verification ---
-import jwt
-import requests
-from jwt import PyJWKClient
-
-# Stack Auth Configuration
-STACK_PROJECT_ID = os.getenv("STACK_PROJECT_ID", "your-project-id")
-
-
 def verify_stack_token(token: str):
     """
     Manually verify Stack Auth JWT token using JWKS.
