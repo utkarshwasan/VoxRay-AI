@@ -738,11 +738,10 @@ RESPONSE GUIDELINES:
         )
 
 
-app.mount(
-    "/",
-    StaticFiles(directory=str(BASE_DIR / "frontend" / "dist"), html=True),
-    name="static",
-)
+@app.get("/")
+async def root():
+    return {"message": "VoxRay AI Backend is Running", "docs": "/docs"}
+
 
 if __name__ == "__main__":
     print("uvicorn backend.api.main:app --reload")
