@@ -151,8 +151,13 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
         console.error("Analysis failed", error);
         if (error.response?.status === 401) {
           alert("Authentication required. Please log in.");
+        } else if (error.response?.status === 503) {
+          // Model is still loading or unavailable
+          alert("AI Engine is warming up. Please try again in 30 seconds.");
+        } else if (error.code === 'ERR_NETWORK') {
+          alert("Cannot connect to server. Please check if the backend is running.");
         } else {
-          alert("Analysis failed. Ensure backend is running.");
+          alert("Analysis failed. Please try again.");
         }
     } finally {
         setAnalyzing(false);

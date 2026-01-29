@@ -185,23 +185,57 @@ async def health_check():
 
 
 @app.on_event("startup")
-def load_models():
+async def load_models():
     global medical_model, stt_processor, stt_model
 
     # Load class names first
     load_class_names()
 
-    # Model path using pathlib (models moved to backend/models)
-    model_path = BASE_DIR / "backend" / "models" / "medical_model_final.keras"
-    try:
-        medical_model = tf.keras.models.load_model(str(model_path))
-        print(
-            f"✅ Model loaded from {model_path}. Expected {len(MEDICAL_CLASS_NAMES)} classes"
-        )
-    except Exception as e:
-        print(
-            f"WARNING: Could not load F1 model from {model_path}. /predict/image will fail. Error: {e}"
-        )
+    # --- Runtime Model Download from Hugging Face Hub ---
+    REPO_ID = "witty22/voxray-model"
+    FILENAME = "medical_model_final.keras"
+
+    model_path = BASE_DIR / "backend" / "models" / FILENAME
+
+    # Check if file exists AND is not an LFS pointer (< 1MB = LFS pointer)
+    if not model_path.exists() or model_path.stat().st_size < 1_000_000:
+        print(f"⚠️ {FILENAME} is missing or an LFS pointer. Downloading real binary...")
+        try:
+            from huggingface_hub import hf_hub_download
+
+            # If repo is private, ensure HF_TOKEN is in your Space Secrets
+            hf_token = os.getenv("HF_TOKEN")
+            downloaded_path = hf_hub_download(
+                repo_id=REPO_ID,
+                filename=FILENAME,
+                token=hf_token,
+                local_dir=str(BASE_DIR / "backend" / "models"),
+                local_dir_use_symlinks=False,
+            )
+            model_path = Path(downloaded_path)
+            print(f"✅ Successfully downloaded model to {model_path}")
+        except Exception as e:
+            print(f"❌ Hub download failed: {e}")
+            import traceback
+
+            traceback.print_exc()
+            # Continue without model - endpoint will return 503
+
+    # Final Load
+    if model_path.exists() and model_path.stat().st_size > 1_000_000:
+        try:
+            medical_model = tf.keras.models.load_model(str(model_path))
+            size_mb = model_path.stat().st_size / (1024 * 1024)
+            print(
+                f"🚀 Model loaded into memory. Size: {size_mb:.2f} MB. Expected {len(MEDICAL_CLASS_NAMES)} classes"
+            )
+        except Exception as e:
+            print(f"❌ Keras load failed: {e}")
+            import traceback
+
+            traceback.print_exc()
+    else:
+        print("❌ No valid model file available! /predict/image will return 503.")
 
     print("⏳ Loading STT Model (Whisper)...")
     stt_processor = AutoProcessor.from_pretrained("openai/whisper-base")

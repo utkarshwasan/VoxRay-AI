@@ -17,6 +17,7 @@ PyJWT[crypto]
 cryptography
 requests
 edge-tts==7.2.7
+huggingface_hub
 
 
 # Testing
