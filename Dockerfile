@@ -22,7 +22,7 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Copy Application Code
 COPY --chown=user:user backend/ ./backend/
-COPY --chown=user:user consolidated_medical_data/ ./consolidated_medical_data/
+
 
 # Hugging Face Port
 EXPOSE 7860
