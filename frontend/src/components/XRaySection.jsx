@@ -120,7 +120,13 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
       setAiAnalysis(response.data.response);
     } catch (error) {
       console.error("AI Analysis failed", error);
-      setAiAnalysis("Could not generate AI analysis at this time.");
+      // Provide informative fallback with diagnosis info
+      const diagnosisName = diagnosisData.diagnosis?.replace(/^\d+_/, '').replace(/_/g, ' ') || 'Unknown';
+      const confidenceStr = (diagnosisData.confidence * 100).toFixed(1);
+      setAiAnalysis(
+        `Analysis complete: ${diagnosisName} detected with ${confidenceStr}% confidence. ` +
+        `AI Voice Assistant is temporarily offline. Please consult a medical professional for detailed interpretation.`
+      );
     } finally {
       setAnalyzingAI(false);
     }
