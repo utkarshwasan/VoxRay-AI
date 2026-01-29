@@ -236,8 +236,30 @@ async def predict_image(
 ):
     """Protected endpoint - requires authentication."""
     print(f"👤 User {user.get('sub')} requesting prediction")
+
+    # 1. Check if the global variable actually exists in this worker
+    print(f"🔍 Debug: medical_model type: {type(medical_model)}")
+
+    # 2. Check the physical file on the disk
+    model_path = Path("/app/backend/models/medical_model_final.keras")
+    if not model_path.exists():
+        print(f"❌ ABSOLUTE PATH FAIL: {model_path} not found")
+        # Try relative as fallback
+        model_path = Path("backend/models/medical_model_final.keras")
+        print(
+            f"🔍 Checking relative path: {model_path.absolute()} - Exists: {model_path.exists()}"
+        )
+
+    if model_path.exists():
+        size_mb = os.path.getsize(model_path) / (1024 * 1024)
+        print(f"📁 Model file found! Size: {size_mb:.2f} MB")
+        if size_mb < 1:
+            print("⚠️ ALERT: Model file is too small. Likely a Git LFS pointer error!")
+
     if medical_model is None:
-        raise HTTPException(status_code=503, detail="F1 Diagnosis model not loaded.")
+        raise HTTPException(
+            status_code=503, detail="Model is None in this worker process."
+        )
     try:
         file_bytes = await image_file.read()
 
