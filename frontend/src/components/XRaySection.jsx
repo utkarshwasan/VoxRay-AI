@@ -12,6 +12,8 @@ import Tooltip from './Tooltip';
 import { useUser } from '@stackframe/react';
 import { stackApp } from '../stack';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
 const XRaySection = ({ onResultChange, selectedResult }) => {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -108,7 +110,7 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
       // Construct a prompt for the LLM
       const prompt = `The patient's X-Ray shows ${diagnosisData.diagnosis} with ${(diagnosisData.confidence * 100).toFixed(1)}% confidence. Provide a concise, professional 3-4 line clinical analysis summarising what this condition implies and standard next steps. Keep it strictly under 60 words.`;
       
-      const response = await axios.post('http://127.0.0.1:8000/chat', { 
+      const response = await axios.post(`${API_BASE_URL}/chat`, { 
         message: prompt,
         context: `Diagnosis: ${diagnosisData.diagnosis}`
       }, {
@@ -134,7 +136,7 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
         formData.append('image_file', file);
         
         const authHeaders = await getAuthHeaders();
-        const response = await axios.post('http://127.0.0.1:8000/predict/image', formData, {
+        const response = await axios.post(`${API_BASE_URL}/predict/image`, formData, {
             headers: { 'Content-Type': 'multipart/form-data', ...authHeaders }
         });
         
@@ -167,7 +169,7 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
         formData.append('image_file', file);
         
         const authHeaders = await getAuthHeaders();
-        const response = await axios.post('http://127.0.0.1:8000/predict/explain', formData, {
+        const response = await axios.post(`${API_BASE_URL}/predict/explain`, formData, {
             headers: { 'Content-Type': 'multipart/form-data', ...authHeaders }
         });
         
