@@ -39,6 +39,40 @@ import os
 
 TTS_VOICE = os.getenv("TTS_VOICE", "en-US-ChristopherNeural")
 
+# --- Stack Auth Manual Verification ---
+import jwt
+import requests
+from jwt import PyJWKClient
+
+# Stack Auth Configuration
+STACK_PROJECT_ID = os.getenv("STACK_PROJECT_ID", "your-project-id")
+
+
+def verify_stack_token(token: str):
+    """
+    Manually verify Stack Auth JWT token using JWKS.
+    Replacing the deprecated stack-auth-python SDK.
+    """
+    # This URL is standard for Stack Auth
+    url = f"https://api.stack-auth.com/api/v1/projects/{STACK_PROJECT_ID}/.well-known/jwks.json"
+
+    try:
+        jwks_client = PyJWKClient(url)
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
+
+        payload = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=STACK_PROJECT_ID,
+            leeway=60,  # Add leeway for clock skew
+        )
+        return payload  # Returns user info (sub, email, etc.)
+    except Exception as e:
+        print(f"❌ Token validation failed: {str(e)}")
+        return None
+
+
 # Path resolution: backend/api/main.py -> backend/api -> backend -> root
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 

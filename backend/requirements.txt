@@ -17,7 +17,6 @@ PyJWT[crypto]
 cryptography
 requests
 edge-tts==7.2.7
-stack-auth-python
 
 
 # Testing
