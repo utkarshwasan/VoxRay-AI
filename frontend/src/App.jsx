@@ -1,15 +1,25 @@
-import React, { useState } from 'react';
-// eslint-disable-next-line no-unused-vars
+import React, { Suspense, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Activity, Sparkles } from 'lucide-react';
 import { Routes, Route } from 'react-router-dom';
 import { UserButton } from '@stackframe/react';
+import ErrorBoundary from './components/ErrorBoundary';
 import XRaySection from './components/XRaySection';
 import VoiceSection from './components/VoiceSection';
 import Sidebar from './components/Sidebar';
 import Login from './pages/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import OAuthCallbackHandler from './components/OAuthCallbackHandler';
+
+// Page loader component
+const PageLoader = () => (
+  <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+    <div className="flex flex-col items-center gap-4">
+      <div className="animate-spin w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full"></div>
+      <p className="text-slate-400">Loading VoxRay AI...</p>
+    </div>
+  </div>
+);
 
 const ParticleSystem = () => {
   const [particles] = useState(() => Array.from({ length: 30 }).map((_, i) => ({
@@ -112,24 +122,34 @@ function Dashboard() {
           </div>
         </motion.header>
 
-        {/* Main Content */}
+        {/* Main Content - Wrapped in Error Boundary */}
         <main className="flex-grow container mx-auto px-6 py-8 flex gap-8">
-           <Sidebar 
-             recentScans={recentScans} 
-             onSelectScan={(scan) => setDiagnosisResult(scan)}
-             currentScanId={diagnosisResult?.id}
-           />
+           <ErrorBoundary fallbackMessage="Sidebar encountered an error.">
+             <Sidebar 
+               recentScans={recentScans} 
+               onSelectScan={(scan) => setDiagnosisResult(scan)}
+               currentScanId={diagnosisResult?.id}
+             />
+           </ErrorBoundary>
            
            <div className="flex-grow flex flex-col gap-8 min-w-0">
-              <XRaySection 
-                onResultChange={handleNewScan} 
-                selectedResult={diagnosisResult?.fullResult}
-              />
-              <VoiceSection currentDiagnosis={diagnosisResult} />
+              <ErrorBoundary fallbackMessage="X-Ray analysis section encountered an error. Please refresh the page.">
+                <Suspense fallback={<PageLoader />}>
+                  <XRaySection 
+                    onResultChange={handleNewScan} 
+                    selectedResult={diagnosisResult?.fullResult}
+                  />
+                </Suspense>
+              </ErrorBoundary>
+              
+              <ErrorBoundary fallbackMessage="Voice section encountered an error. Please refresh the page.">
+                <Suspense fallback={<PageLoader />}>
+                  <VoiceSection currentDiagnosis={diagnosisResult} />
+                </Suspense>
+              </ErrorBoundary>
            </div>
         </main>
 
-        {/* Footer */}
         {/* Footer */}
         <footer className="mt-8 mb-4">
           <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-2xl mx-4 py-4 flex flex-col items-center justify-center shadow-lg shadow-black/5">
@@ -145,14 +165,18 @@ function Dashboard() {
 
 function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/handler/*" element={<OAuthCallbackHandler />} />
-      {/* Protected Routes */}
-      <Route element={<ProtectedRoute />}>
-        <Route path="/" element={<Dashboard />} />
-      </Route>
-    </Routes>
+    <ErrorBoundary fallbackMessage="Application error. Please refresh the page.">
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/handler/*" element={<OAuthCallbackHandler />} />
+          {/* Protected Routes */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/" element={<Dashboard />} />
+          </Route>
+        </Routes>
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 
