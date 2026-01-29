@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, startTransition } from 'react';
 // eslint-disable-next-line no-unused-vars
 import { AnimatePresence, motion } from 'framer-motion';
 import { Mic, Square, Sparkles, Activity, RefreshCw, Volume2, AlertCircle } from 'lucide-react';
@@ -409,7 +409,10 @@ const VoiceSection = ({ currentDiagnosis }) => {
       timestamp: new Date(),
       ...extras
     };
-    setMessages(prev => [...prev, newMessage]);
+    // Use startTransition for non-urgent UI updates
+    startTransition(() => {
+      setMessages(prev => [...prev, newMessage]);
+    });
     return newMessage.id;
   }, []);
 
@@ -443,7 +446,9 @@ const VoiceSection = ({ currentDiagnosis }) => {
                         Date.now() - new Date(lastMessage.timestamp).getTime() < 2000;
     
     if (!isDuplicate) {
-      setMessages(prev => [...prev, { id: generateId(), role: 'user', text, timestamp: new Date() }]);
+      startTransition(() => {
+        setMessages(prev => [...prev, { id: generateId(), role: 'user', text, timestamp: new Date() }]);
+      });
     }
 
     try {
@@ -484,13 +489,15 @@ const VoiceSection = ({ currentDiagnosis }) => {
       const url = URL.createObjectURL(ttsRes.data);
       setAudioUrl(url);
       
-      setMessages(prev => [...prev, { 
-        id: generateId(), 
-        role: 'assistant', 
-        text: aiText, 
-        isNew: true, 
-        timestamp: new Date() 
-      }]);
+      startTransition(() => {
+        setMessages(prev => [...prev, { 
+          id: generateId(), 
+          role: 'assistant', 
+          text: aiText, 
+          isNew: true, 
+          timestamp: new Date() 
+        }]);
+      });
       
       // Play audio
       setStatus('SPEAKING');
@@ -515,13 +522,15 @@ const VoiceSection = ({ currentDiagnosis }) => {
         errorText = 'Network error. Please check your connection.';
       }
       
-      setMessages(prev => [...prev, { 
-        id: generateId(),
-        role: 'error', 
-        text: errorText, 
-        retryable: e.response?.status !== 401,
-        originalInput: text
-      }]);
+      startTransition(() => {
+        setMessages(prev => [...prev, { 
+          id: generateId(),
+          role: 'error', 
+          text: errorText, 
+          retryable: e.response?.status !== 401,
+          originalInput: text
+        }]);
+      });
     } finally {
       isProcessingRef.current = false;
       setIsRetrying(false);

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, startTransition } from 'react';
 // eslint-disable-next-line no-unused-vars
 import { AnimatePresence, motion } from 'framer-motion';
 import { Upload, Activity, AlertCircle, CheckCircle, TrendingUp, FileUp, Sparkles, Info, BrainCircuit } from 'lucide-react';
@@ -117,7 +117,10 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
         headers: { ...authHeaders }
       });
       
-      setAiAnalysis(response.data.response);
+      // Use startTransition for state updates
+      startTransition(() => {
+        setAiAnalysis(response.data.response);
+      });
     } catch (error) {
       console.error("AI Analysis failed", error);
       // Provide informative fallback with diagnosis info
@@ -147,8 +150,12 @@ const XRaySection = ({ onResultChange, selectedResult }) => {
         });
         
         const data = response.data;
-        setResult(data);
-        if (onResultChange) onResultChange(data);
+        
+        // Use startTransition for heavy state updates to prevent React suspense crashes
+        startTransition(() => {
+          setResult(data);
+          if (onResultChange) onResultChange(data);
+        });
         
         // Trigger AI Analysis after successful prediction
         generateAIAnalysis(data);
