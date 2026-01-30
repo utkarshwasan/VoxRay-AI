@@ -800,6 +800,19 @@ RESPONSE GUIDELINES:
         )
 
 
+# ==================== API VERSIONING SETUP ====================
+# This MUST be called after all V1 endpoints are defined above
+from backend.api.versioning import setup_versioning, APIVersionMiddleware
+
+# Setup /v1/* aliases and /v2/* router
+setup_versioning(app)
+
+# Add version headers middleware
+app.add_middleware(APIVersionMiddleware)
+
+print("✅ API Versioning configured: /v1/*, /v2/*, and root-level V1 endpoints")
+
+
 @app.get("/")
 async def root():
     return {"message": "VoxRay AI Backend is Running", "docs": "/docs"}
