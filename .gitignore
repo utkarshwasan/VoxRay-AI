@@ -63,6 +63,14 @@ pipeline/tfx/*.keras
 *.pt
 *.ckpt
 
+# Local Logs
+dicom_log.txt
+error_log.txt
+import_error.txt
+integration_test.log
+pipeline_test.log
+test_output.txt
+
 # Agent & Brain
 .agent/
 brain/

@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voxray-backend
+  labels:
+    app: voxray-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voxray-backend
+  template:
+    metadata:
+      labels:
+        app: voxray-backend
+    spec:
+      containers:
+        - name: backend
+          image: voxray-backend:latest
+          ports:
+            - containerPort: 7860
+          env:
+            - name: PORT
+              value: "7860"
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1000m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 7860
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 7860
+            initialDelaySeconds: 60
+            periodSeconds: 15

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: voxray-backend
+  labels:
+    app: voxray-backend
+spec:
+  type: ClusterIP
+  selector:
+    app: voxray-backend
+  ports:
+    - port: 80
+      targetPort: 7860
+      protocol: TCP

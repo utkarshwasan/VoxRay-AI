@@ -1,17 +1,21 @@
+/* eslint-env node */
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import path from 'path'
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: {
-      // Prevent duplicate React instances in production
-      'react': path.resolve(__dirname, 'node_modules/react'),
-      'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
-    },
-    dedupe: ['react', 'react-dom']
+    // alias removed for debugging
+  },
+  server: {
+    port: 5173,
+    strictPort: true,
   },
   build: {
     // Better error messages in production
@@ -28,6 +32,7 @@ export default defineConfig({
   },
   // Ensure consistent environment
   define: {
+    // eslint-disable-next-line no-undef
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production')
   }
 })

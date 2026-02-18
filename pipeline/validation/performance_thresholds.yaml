@@ -1,0 +1,9 @@
+thresholds:
+  accuracy_min: 0.85
+  drift_score_max: 0.3
+  false_positive_rate_max_delta: 0.10
+
+actions:
+  on_accuracy_breach: "trigger_retrain"
+  on_drift_breach: "trigger_retrain"
+  on_fp_rate_breach: "alert_only"
