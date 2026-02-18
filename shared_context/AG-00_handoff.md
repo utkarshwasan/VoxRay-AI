@@ -172,6 +172,21 @@ The following agents can begin their work:
 
 ---
 
+## Testing Strategy (Important for Future Agents)
+
+To ensure tests pass in CI/CD without heavy models or live auth:
+
+1.  **Mock Authentication:** Use the `mock_auth` fixture to bypass JWT verification.
+2.  **Mock Models:** Use the `mock_model` fixture to patch `medical_model` and `MEDICAL_CLASS_NAMES`.
+
+**Current Status:** These fixtures are defined in `tests/migration/test_backward_compatibility.py`.
+
+**Task for AG-08 (QA):**
+
+- [ ] Move `mock_auth` and `mock_model` fixtures to `tests/conftest.py` to make them available globally for all future tests.
+
+---
+
 **Handoff Complete**  
 **AG-00 Status:** ✅ Complete  
 **Next Agent:** AG-01, AG-03, AG-04, AG-05, AG-08 (parallel start)

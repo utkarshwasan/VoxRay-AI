@@ -10,6 +10,63 @@
   .glass-panel {
     @apply bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl;
   }
+
+  /* Medical-grade glass panels (softer, cleaner) */
+  .glass-clinical {
+    @apply bg-white/[0.03] backdrop-blur-xl border border-white/[0.08] shadow-clinical-lg;
+  }
+
+  /* Diagnostic card variants */
+  .card-normal {
+    @apply border-l-4 border-diagnostic-normal bg-diagnostic-normal/[0.02];
+  }
+
+  .card-warning {
+    @apply border-l-4 border-diagnostic-warning bg-diagnostic-warning/[0.02];
+  }
+
+  .card-critical {
+    @apply border-l-4 border-diagnostic-critical bg-diagnostic-critical/[0.02];
+  }
+
+  /* Smooth data transitions (clinical feel) */
+  .data-fade-in {
+    animation: dataFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Pulse for live data (subtle) */
+  .pulse-clinical {
+    animation: pulseClinical 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  /* Modern scrollbar for medical tables */
+  .clinical-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .clinical-scrollbar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .clinical-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+  }
+
+  .clinical-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+}
+
+@keyframes pulseClinical {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
 }
 
 @keyframes pulse-ring {
@@ -33,30 +90,45 @@
 
 /* --- Super Orb Keyframe Animations --- */
 @keyframes blob-float {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(30px, -40px) scale(1.1); }
-  66% { transform: translate(-20px, 20px) scale(0.9); }
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(30px, -40px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
 }
 
 @keyframes particle-rise {
-  0% { opacity: 0; transform: translateY(0) scale(0.5); }
-  20% { opacity: 1; }
-  100% { opacity: 0; transform: translateY(-60px) scale(0); }
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.5);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-60px) scale(0);
+  }
 }
 
 /* --- Animation Classes --- */
-.animate-blob { 
-  animation: blob-float 12s infinite ease-in-out; 
+.animate-blob {
+  animation: blob-float 12s infinite ease-in-out;
 }
 
-.delay-2000 { 
-  animation-delay: 2s; 
+.delay-2000 {
+  animation-delay: 2s;
 }
 
 /* --- Scrollbar Utilities --- */
 /* Hide scrollbar but keep functionality */
 .hide-scroll::-webkit-scrollbar {
-  display: none; 
+  display: none;
 }
 .hide-scroll {
   -ms-overflow-style: none;
@@ -65,8 +137,20 @@
 
 /* Smooth fade mask for chat stream */
 .scroll-mask {
-  mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
-  -webkit-mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black 10%,
+    black 90%,
+    transparent
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black 10%,
+    black 90%,
+    transparent
+  );
 }
 
 /* --- Accessibility Focus --- */
@@ -100,4 +184,3 @@ button:focus-visible {
   white-space: nowrap;
   border-width: 0;
 }
-

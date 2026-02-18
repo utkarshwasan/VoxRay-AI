@@ -1,23 +1,10 @@
-"""
-VoxRay AI v2.0 Enhanced Endpoints
-
-This module contains the v2 API endpoints with enhanced features:
-- Ensemble model predictions
-- Uncertainty quantification
-- DICOM support
-- FHIR integration
-- Enhanced voice features
-
-All endpoints are feature-gated and will return 503 if the required
-feature flag is not enabled.
-"""
-
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from backend.core.feature_flags import require_feature, FeatureFlag
 
 router = APIRouter()
 
 
+# Health Check
 @router.get("/health")
 async def health_v2():
     """
@@ -27,7 +14,6 @@ async def health_v2():
     from backend.core.feature_flags import get_feature_flags
 
     flags = get_feature_flags()
-
     return {
         "status": "healthy",
         "version": "2.0.0",
@@ -35,15 +21,23 @@ async def health_v2():
     }
 
 
-# Placeholder for future v2 endpoints
-# AG-01 will implement:
-# - POST /predict/ensemble
-# - POST /predict/uncertainty
-#
-# AG-03 will implement:
-# - POST /predict/dicom
-# - GET /fhir/diagnostic-report/{patient_id}
-#
-# AG-04 will implement:
-# - POST /voice/wake-word-detect
-# - POST /transcribe/enhanced
+# Include Sub-Routers
+# 1. Clinical (AG-03)
+from backend.api.routes import v2_clinical
+
+router.include_router(v2_clinical.router, tags=["clinical"])
+
+# 2. Predict (AG-01)
+from backend.api.routes import v2_predict
+
+router.include_router(v2_predict.router, tags=["predict"])
+
+# 3. Voice (AG-04)
+from backend.api.routes import v2_voice
+
+router.include_router(v2_voice.router)
+
+# 4. Chat (Multilingual)
+from backend.api.routes import v2_chat
+
+router.include_router(v2_chat.router, tags=["chat-v2"])

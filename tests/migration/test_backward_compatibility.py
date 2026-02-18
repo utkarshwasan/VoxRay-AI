@@ -14,9 +14,44 @@ SAMPLE_AUDIO = FIXTURES_DIR / "sample_audio.wav"
 
 TEST_TOKEN = os.getenv("TEST_AUTH_TOKEN", "test_token_placeholder")
 
+from unittest.mock import MagicMock, patch
+from backend.api.deps import get_current_user
+
+
+@pytest.fixture
+def mock_auth():
+    """Mock authentication for successful tests"""
+    app.dependency_overrides[get_current_user] = lambda: {"sub": "test_user"}
+    yield
+    app.dependency_overrides = {}
+
+
+@pytest.fixture
+def no_auth():
+    """Ensure no auth override is active for failure tests"""
+    app.dependency_overrides = {}
+    yield
+    app.dependency_overrides = {}
+
+
+@pytest.fixture
+def mock_model():
+    """Mock ML model for successful tests"""
+    mock_pred = MagicMock()
+    # Mock return value: list of lists (batch size 1) with probabilities
+    # Assuming 3 classes to match mocked class names
+    mock_pred.predict.return_value = [[0.1, 0.8, 0.1]]
+
+    # Patch the global variable in backend.api.main
+    with (
+        patch("backend.api.main.medical_model", mock_pred),
+        patch("backend.api.main.MEDICAL_CLASS_NAMES", ["Normal", "Pneumonia", "Covid"]),
+    ):
+        yield mock_pred
+
 
 @pytest.mark.skipif(not SAMPLE_XRAY.exists(), reason="sample_xray.png missing")
-def test_v1_predict_image_structure():
+def test_v1_predict_image_structure(mock_auth, mock_model):
     """
     /predict/image MUST still return:
     {
@@ -46,7 +81,7 @@ def test_v1_predict_image_structure():
 
 
 @pytest.mark.skipif(not SAMPLE_XRAY.exists(), reason="sample_xray.png missing")
-def test_v1_predict_image_alias_v1_prefix():
+def test_v1_predict_image_alias_v1_prefix(mock_auth, mock_model):
     """
     /v1/predict/image alias MUST behave identically to /predict/image.
     """
@@ -79,7 +114,7 @@ def test_v1_transcribe_audio_structure():
     assert isinstance(data["transcription"], str)
 
 
-def test_v1_chat_structure():
+def test_v1_chat_structure(mock_auth):
     """
     /chat MUST still return:
     {
@@ -115,7 +150,7 @@ def test_v1_health_structure():
 
 
 @pytest.mark.skipif(not SAMPLE_XRAY.exists(), reason="sample_xray.png missing")
-def test_auth_required_for_protected_endpoints():
+def test_auth_required_for_protected_endpoints(no_auth):
     """
     /predict/image and /chat MUST require auth token.
     """
@@ -126,7 +161,7 @@ def test_auth_required_for_protected_endpoints():
 
 
 @pytest.mark.skipif(not SAMPLE_XRAY.exists(), reason="sample_xray.png missing")
-def test_invalid_token_rejected():
+def test_invalid_token_rejected(no_auth):
     headers = {"x-stack-access-token": "invalid-token"}
     with SAMPLE_XRAY.open("rb") as f:
         files = {"image_file": ("test.png", f, "image/png")}
