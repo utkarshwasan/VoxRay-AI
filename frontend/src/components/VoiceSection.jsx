@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo, startTransition } from 'react';
 // eslint-disable-next-line no-unused-vars
 import { AnimatePresence, motion } from 'framer-motion';
-import { Mic, Square, Sparkles, Activity, RefreshCw, Volume2, AlertCircle } from 'lucide-react';
+import { Mic, Square, Sparkles, Activity, RefreshCw, Volume2, AlertCircle, Globe } from 'lucide-react';
+import { useFeatureFlags } from '../contexts/FeatureFlagContext';
 import axios from 'axios';
 import AudioRecorderPolyfill from 'audio-recorder-polyfill';
 import { useUser } from '@stackframe/react';
@@ -339,6 +340,17 @@ const VoiceSection = ({ currentDiagnosis }) => {
   const recordingStartTimeRef = useRef(null);
   
   const user = useUser();
+  const { flags } = useFeatureFlags();
+  const multilingualEnabled = flags?.multilingual_voice === true;
+  const [selectedLanguage, setSelectedLanguage] = useState('en');
+  const selectedLanguageRef = useRef('en'); // Ref for callbacks (always current)
+
+  // Sync ref with state
+  useEffect(() => {
+    selectedLanguageRef.current = selectedLanguage;
+  }, [selectedLanguage]);
+
+  const [showLanguageMenu, setShowLanguageMenu] = useState(false);
 
   // 1. Auto-scroll to bottom with reduced motion support
   useEffect(() => {
@@ -482,7 +494,10 @@ const VoiceSection = ({ currentDiagnosis }) => {
       // TTS API call
       const ttsRes = await axios.post(
         `${API_BASE}/generate/speech`, 
-        { text: aiText }, 
+        { 
+          text: aiText,
+          language: selectedLanguageRef.current  // Use ref to avoid stale closure 
+        }, 
         { headers, responseType: 'blob' }
       );
       
@@ -572,7 +587,11 @@ const VoiceSection = ({ currentDiagnosis }) => {
       formData.append('audio_file', audioBlob);
       const headers = await getAuthHeaders();
 
-      const sttRes = await axios.post(`${API_BASE}/transcribe/audio`, formData, { headers });
+      // Pass selected language to STT (using ref)
+      const sttRes = await axios.post(`${API_BASE}/transcribe/audio`, formData, { 
+        headers,
+        params: { language: selectedLanguageRef.current } 
+      });
       const userText = sttRes.data.transcription?.trim();
       
       if (!userText) {
@@ -812,8 +831,8 @@ const VoiceSection = ({ currentDiagnosis }) => {
       {/* Main UI Container */}
       <div className="absolute inset-0 flex flex-col z-10">
 
-        {/* Header */}
-        <div className="h-16 flex items-center justify-between px-6 border-b border-white/5 bg-slate-900/40 backdrop-blur-md">
+        {/* Header - Z-index fixed to be above chat stream */}
+        <div className="h-16 flex items-center justify-between px-6 border-b border-white/5 bg-slate-900/40 backdrop-blur-md relative z-50 pointer-events-auto">
           <div className="flex items-center gap-3">
             <div className="relative">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg border border-white/10">
@@ -828,16 +847,64 @@ const VoiceSection = ({ currentDiagnosis }) => {
           </div>
 
           {/* Sterile Mode Toggle */}
-          <button 
-            onClick={() => setIsSterileMode(!isSterileMode)}
-            className="flex items-center gap-2 group cursor-pointer focus:outline-none"
-            title="Hands-free mode"
-          >
-            <span className={`text-[10px] font-medium uppercase tracking-wider transition-colors ${isSterileMode ? 'text-emerald-400' : 'text-slate-500'}`}>Sterile</span>
-            <div className={`w-8 h-4 rounded-full border relative transition-colors ${isSterileMode ? 'bg-emerald-900/50 border-emerald-500/30' : 'bg-slate-800 border-white/10'}`}>
-              <div className={`absolute top-0.5 w-3 h-3 rounded-full transition-all duration-300 ${isSterileMode ? 'right-0.5 bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'left-0.5 bg-slate-500'}`} />
+          {/* Header Right: Language Selector + Sterile Mode Toggle */}
+          <div className="flex items-center gap-4">
+            {/* Language Selector (V2 Multilingual) */}
+            <div className="relative">
+                <button
+                  onClick={() => setShowLanguageMenu(!showLanguageMenu)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-800/90 border border-slate-700/60 hover:bg-slate-700/90 transition-all duration-200 backdrop-blur-sm shadow-lg flex items-center gap-2"
+                  aria-label="Select language"
+                >
+                  <Globe className="w-4 h-4 text-blue-400" />
+                  <span className="text-xs font-medium text-white/90">{
+                    { 'en': 'EN', 'es': 'ES', 'fr': 'FR', 'de': 'DE', 'zh': '中', 'hi': 'हि' }[selectedLanguage] || 'EN'
+                  }</span>
+                </button>
+                {showLanguageMenu && (
+                  <div className="absolute right-0 mt-2 w-40 bg-slate-800/95 border border-slate-700 rounded-lg shadow-2xl overflow-hidden backdrop-blur-md z-[100] pointer-events-auto">
+                    {[
+                      { code: 'en', label: 'English', flag: '🇬🇧' },
+                      { code: 'es', label: 'Español', flag: '🇪🇸' },
+                      { code: 'fr', label: 'Français', flag: '🇫🇷' },
+                      { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
+                      { code: 'zh', label: '中文', flag: '🇨🇳' },
+                      { code: 'hi', label: 'हिन्दी', flag: '🇮🇳' }
+                    ].map((lang) => (
+                      <button
+                        key={lang.code}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedLanguage(lang.code);
+                          setShowLanguageMenu(false);
+                        }}
+                        className={`w-full px-3 py-2.5 text-left text-sm hover:bg-slate-700/80 transition-colors flex items-center gap-2 cursor-pointer ${
+                          selectedLanguage === lang.code
+                            ? 'bg-blue-600/30 text-white border-l-2 border-blue-500'
+                            : 'text-white/80'
+                        }`}
+                      >
+                        <span className="text-base">{lang.flag}</span>
+                        <span>{lang.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
             </div>
-          </button>
+
+            {/* Sterile Mode Toggle */}
+            <button 
+              onClick={() => setIsSterileMode(!isSterileMode)}
+              className="flex items-center gap-2 group cursor-pointer focus:outline-none"
+              title="Hands-free mode"
+            >
+              <span className={`text-[10px] font-medium uppercase tracking-wider transition-colors ${isSterileMode ? 'text-emerald-400' : 'text-slate-500'}`}>Sterile</span>
+              <div className={`w-8 h-4 rounded-full border relative transition-colors ${isSterileMode ? 'bg-emerald-900/50 border-emerald-500/30' : 'bg-slate-800 border-white/10'}`}>
+                <div className={`absolute top-0.5 w-3 h-3 rounded-full transition-all duration-300 ${isSterileMode ? 'right-0.5 bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'left-0.5 bg-slate-500'}`} />
+              </div>
+            </button>
+          </div>
         </div>
 
         {/* Chat Stream */}

@@ -1,10 +1,6 @@
 import uvicorn
 import io
-import librosa
-import soundfile as sf
-import torch
-import tensorflow as tf
-import numpy as np
+import numpy as np  # NumPy is relatively fast, keeping for common types
 from pathlib import Path
 from PIL import Image
 from fastapi import FastAPI, UploadFile, File, HTTPException, Body, Depends
@@ -13,15 +9,27 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from backend.api.deps import get_current_user
-from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
-from datasets import load_dataset
-from tensorflow.keras.applications.resnet_v2 import preprocess_input
 from typing import List, Optional
 from backend.api.medical_context import (
     get_condition_info,
     format_context_for_prompt,
     get_knowledge_base_info,
 )
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from .env file
+load_dotenv()
+
+# --- Lazy Loading Placeholders ---
+tf = None
+torch = None
+librosa = None
+sf = None
+edge_tts = None
+preprocess_input = None
+AutoProcessor = None
+AutoModelForSpeechSeq2Seq = None
 
 medical_model = None
 IMG_HEIGHT = 224
@@ -29,11 +37,9 @@ IMG_WIDTH = 224
 
 stt_processor = None
 stt_model = None
+device = "cpu"  # Default
 
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
-
-# Edge TTS Configuration (cloud-based, no local model)
-import edge_tts
+# Edge TTS Configuration
 import re
 import os
 from dotenv import load_dotenv
@@ -141,6 +147,8 @@ app = FastAPI(
     description="Serves F1 (Image) and F2 (Voice) models via REST API.",
 )
 
+# v2 router is handled in versioning.py to avoid double registration
+
 # --- CORS CONFIGURATION (Dynamic for Deployment) ---
 # 1. Define base allowed origins (localhost for development)
 ALLOWED_ORIGINS = [
@@ -178,6 +186,21 @@ app.add_middleware(
 )
 
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request: FastAPI, exc: Exception):
+    """
+    Global exception handler to ensure CORS headers are preserved even on 500 errors.
+    Prevents browsers from masking server errors as CORS issues.
+    """
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {str(exc)}"},
+        headers={
+            "Access-Control-Allow-Origin": "*"
+        },  # broad fallback or use specific origins
+    )
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint for load balancers."""
@@ -186,7 +209,26 @@ async def health_check():
 
 @app.on_event("startup")
 async def load_models():
-    global medical_model, stt_processor, stt_model
+    # Lazy load heavy dependencies
+    print("⏳ Initializing models and heavy dependencies...")
+    global tf, torch, librosa, sf, edge_tts, preprocess_input
+    global AutoProcessor, AutoModelForSpeechSeq2Seq
+    global medical_model, stt_processor, stt_model, device
+
+    try:
+        import tensorflow as tf
+        from tensorflow.keras.applications.resnet_v2 import preprocess_input
+        import torch
+        import librosa
+        import soundfile as sf
+        import edge_tts
+        from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
+
+        device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        print(f"✅ Libraries loaded. Device: {device}")
+    except ImportError as e:
+        print(f"❌ Critical Dependency Missing: {e}")
+        return
 
     # Load class names first
     load_class_names()
@@ -251,6 +293,16 @@ async def load_models():
 
 
 def preprocess_image_from_bytes(file_bytes: bytes):
+    global tf, preprocess_input
+
+    if tf is None:
+        # Fallback if accessed before startup for some reason
+        import tensorflow as _tf
+        from tensorflow.keras.applications.resnet_v2 import preprocess_input as _pi
+
+        tf = _tf
+        preprocess_input = _pi
+
     img = Image.open(io.BytesIO(file_bytes)).convert("RGB")
     img = img.resize((IMG_WIDTH, IMG_HEIGHT))
     img_arr = np.array(img).astype(np.float32)
@@ -324,6 +376,9 @@ def generate_gradcam(model, img_array, class_idx):
     Generate Grad-CAM heatmap for model explainability.
     Fixed for Keras 3.x - reconstructs model graph to access intermediate layers.
     """
+    if tf is None:
+        return None
+
     try:
         # Force model build if needed
         if not model.built:
@@ -520,10 +575,13 @@ async def explain_prediction(
 
 class TranscriptionResponse(BaseModel):
     transcription: str
+    detected_language: Optional[str] = None
 
 
 @app.post("/transcribe/audio", response_model=TranscriptionResponse)
-async def transcribe_audio(audio_file: UploadFile = File(...)):
+async def transcribe_audio(
+    audio_file: UploadFile = File(...), language: Optional[str] = None
+):
     if not stt_model or not stt_processor:
         raise HTTPException(status_code=503, detail="F2 (STT) models are not loaded.")
     try:
@@ -534,20 +592,46 @@ async def transcribe_audio(audio_file: UploadFile = File(...)):
             )
         if len(audio_data.shape) > 1:
             audio_data = audio_data.mean(axis=1)
+
         input_features = stt_processor(
             audio_data, sampling_rate=16000, return_tensors="pt"
         ).input_features.to(device)
-        predicted_ids = stt_model.generate(input_features, max_length=448)
+
+        # Force language if provided to fix Hindi/Urdu confusion
+        generate_kwargs = {"max_length": 448}
+        if language:
+            # Map frontend codes to Whisper language codes
+            whisper_lang_map = {
+                "en": "english",
+                "es": "spanish",
+                "fr": "french",
+                "de": "german",
+                "zh": "chinese",
+                "hi": "hindi",  # Explicitly force Hindi
+            }
+            whisper_lang = whisper_lang_map.get(language, language)
+            generate_kwargs["language"] = whisper_lang
+            print(f"🌐 Forcing STT language: {whisper_lang}")
+
+        predicted_ids = stt_model.generate(input_features, **generate_kwargs)
         transcription = stt_processor.batch_decode(
             predicted_ids, skip_special_tokens=True
         )
-        return JSONResponse(content={"transcription": transcription[0]})
+
+        return JSONResponse(
+            content={
+                "transcription": transcription[0],
+                "detected_language": language or "auto",
+            }
+        )
     except Exception as e:
+        print(f"❌ Transcription error: {e}")
         raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
 
 
 class TTSRequest(BaseModel):
     text: str
+    language: Optional[str] = "en"
 
 
 def normalize_medical_text(text: str) -> str:
@@ -584,12 +668,26 @@ async def generate_speech(request: TTSRequest = Body(...)):
     """
     High-Fidelity Neural TTS using Microsoft Edge TTS.
     Streams audio directly to frontend for low latency.
+    Supports 6 languages via centralized config.
     """
     text = (request.text or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Text is required")
 
+    # Lazy load edge_tts if not already
+    global edge_tts
+    if edge_tts is None:
+        import edge_tts as _edge_tts
+
+        edge_tts = _edge_tts
+
+    from backend.voice.multilingual import get_language_config
+
     try:
+        # Get voice for requested language
+        lang_config = get_language_config(request.language)
+        print(f"🎙️ TTS Language: {lang_config.display_name} ({lang_config.tts_voice})")
+
         # 1. Normalize text (fixes pronunciation & skipping)
         clean_text = normalize_medical_text(text)
 
@@ -597,29 +695,65 @@ async def generate_speech(request: TTSRequest = Body(...)):
         max_chars = 2000
         if len(clean_text) > max_chars:
             clean_text = clean_text[:max_chars].rsplit(" ", 1)[0] + "..."
+            print(f"⚠️ Text truncated from {len(text)} to {len(clean_text)} chars")
 
-        # 3. Setup Edge TTS
+        # 3. Setup Edge TTS with selected voice
         communicate = edge_tts.Communicate(
             text=clean_text,
-            voice=TTS_VOICE,
+            voice=lang_config.tts_voice,
         )
 
-        # 4. Stream generator
+        # 4. Stream generator with error handling
         async def audio_stream():
-            async for chunk in communicate.stream():
-                if chunk["type"] == "audio":
-                    yield chunk["data"]
+            try:
+                chunk_count = 0
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        chunk_count += 1
+                        yield chunk["data"]
+
+                if chunk_count > 0:
+                    print(
+                        f"✅ TTS Success: Generated {chunk_count} audio chunks for {lang_config.display_name}"
+                    )
+                else:
+                    print(
+                        f"⚠️ TTS Warning: No audio chunks received for {lang_config.display_name}"
+                    )
+            except Exception as stream_error:
+                print(f"❌ TTS Stream Error for '{request.language}': {stream_error}")
+                raise
 
         # 5. Return Stream (MP3 format)
         return StreamingResponse(audio_stream(), media_type="audio/mpeg")
 
-    except Exception as e:
-        print(f"TTS Generation Error: {e}")
+    except edge_tts.exceptions.NoAudioReceived as e:
+        print(f"❌ NoAudioReceived for language '{request.language}': {e}")
+        print(f"   Text: '{text[:100]}...'")
         import traceback
 
         traceback.print_exc()
         raise HTTPException(
-            status_code=500, detail=f"Voice generation failed: {str(e)}"
+            status_code=503,
+            detail={
+                "error": "TTS_NO_AUDIO",
+                "message": f"No audio generated for language '{request.language}'. Please try again or switch to English.",
+                "language": request.language,
+                "voice": lang_config.tts_voice,
+            },
+        )
+    except Exception as e:
+        print(f"❌ TTS Generation Error for '{request.language}': {e}")
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "TTS_GENERATION_FAILED",
+                "message": f"Voice generation failed: {str(e)}",
+                "language": request.language,
+            },
         )
 
 
