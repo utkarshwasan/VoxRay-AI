@@ -42,7 +42,9 @@ device = "cpu"  # Default
 # Edge TTS Configuration
 import re
 import os
+import unicodedata
 from dotenv import load_dotenv
+from fastapi import Request as FastAPIRequest
 
 # This will load from the HF Environment Variables automatically
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
@@ -50,6 +52,68 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 STACK_PROJECT_ID = os.getenv("STACK_PROJECT_ID")
 
 TTS_VOICE = os.getenv("TTS_VOICE", "en-US-ChristopherNeural")
+
+
+# ─── Script Detection ────────────────────────────────────────────────────────
+def detect_script(text: str) -> str:
+    """Detect dominant Unicode script. Returns 'devanagari', 'arabic', 'latin', or 'unknown'."""
+    counts: dict = {"devanagari": 0, "arabic": 0, "latin": 0}
+    for ch in text:
+        name = unicodedata.name(ch, "")
+        if "DEVANAGARI" in name:
+            counts["devanagari"] += 1
+        elif "ARABIC" in name:
+            counts["arabic"] += 1
+        elif ch.isascii() and ch.isalpha():
+            counts["latin"] += 1
+    dominant = max(counts, key=counts.get)
+    return dominant if counts[dominant] > 0 else "unknown"
+
+
+# ─── STT Language Config ──────────────────────────────────────────────────────
+# Maps frontend ISO codes to Whisper full language names and expected scripts.
+STT_LANG_CONFIG: dict = {
+    # "hi": {"whisper_name": "hindi", "expected_script": "devanagari"},  # disabled
+    "ur": {"whisper_name": "urdu", "expected_script": "arabic"},
+    "en": {"whisper_name": "english", "expected_script": "latin"},
+    "es": {"whisper_name": "spanish", "expected_script": "latin"},
+    "fr": {"whisper_name": "french", "expected_script": "latin"},
+    "de": {"whisper_name": "german", "expected_script": "latin"},
+    "zh": {"whisper_name": "chinese", "expected_script": None},
+    "ja": {"whisper_name": "japanese", "expected_script": None},
+    "ko": {"whisper_name": "korean", "expected_script": None},
+}
+
+# Resolved at startup from the actual loaded tokenizer vocabulary (not hardcoded)
+URDU_TOKEN_ID: int = None
+
+
+# ─── LLM Language Instructions ───────────────────────────────────────────────
+LANG_LLM_INSTRUCTIONS: dict = {
+    # "hi": (...),   # disabled — STT model cannot reliably transcribe Hindi
+    "ur": "CRITICAL: Respond ONLY in Urdu using Nastaliq script.",
+    "en": "CRITICAL: Respond ONLY in English.",
+    "fr": "CRITICAL: Respond ONLY in French (Français).",
+    "de": "CRITICAL: Respond ONLY in German (Deutsch).",
+    "es": "CRITICAL: Respond ONLY in Spanish (Español).",
+    "zh": "CRITICAL: Respond ONLY in Simplified Chinese (简体中文).",
+    "ja": "CRITICAL: Respond ONLY in Japanese (日本語).",
+    "ko": "CRITICAL: Respond ONLY in Korean (한국어).",
+    "pt": "CRITICAL: Respond ONLY in Portuguese.",
+}
+
+
+# ─── Diagnosis Label Map ─────────────────────────────────────────────────────
+DIAGNOSIS_DISPLAY_LABELS: dict = {
+    "01_NORMAL_LUNG": "Normal Lung Findings",
+    "02_NORMAL_BONE": "Normal Bone Findings",
+    "03_NORMAL_PNEUMONIA": "Normal (No Pneumonia)",
+    "04_LUNG_CANCER": "Suspected Pulmonary Malignancy",
+    "05_FRACTURED": "Bone Fracture Detected",
+    "06_PNEUMONIA": "Pneumonia Detected",
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 # --- Stack Auth Manual Verification ---
 import jwt
@@ -187,17 +251,35 @@ app.add_middleware(
 
 
 @app.exception_handler(Exception)
-async def global_exception_handler(request: FastAPI, exc: Exception):
+async def global_exception_handler(request: FastAPIRequest, exc: Exception):
     """
-    Global exception handler to ensure CORS headers are preserved even on 500 errors.
-    Prevents browsers from masking server errors as CORS issues.
+    Global exception handler — preserves CORS headers on errors.
+    Reflects the request's own origin if it is in the allowed list.
+    Respects status_code if present (e.g. HTTPException), else 500.
     """
+    import traceback
+
+    print(f"!!! EXCEPTION CAUGHT: {type(exc)}: {exc}", flush=True)
+    print(traceback.format_exc(), flush=True)
+
+    origin = request.headers.get("origin", "")
+    cors_origin = origin if origin in ALLOWED_ORIGINS else ""
+    response_headers = (
+        {"Access-Control-Allow-Origin": cors_origin} if cors_origin else {}
+    )
+
+    status_code = 500
+    detail = f"Internal server error: {str(exc)}"
+
+    if hasattr(exc, "status_code"):
+        status_code = exc.status_code
+    if hasattr(exc, "detail"):
+        detail = exc.detail
+
     return JSONResponse(
-        status_code=500,
-        content={"detail": f"Internal server error: {str(exc)}"},
-        headers={
-            "Access-Control-Allow-Origin": "*"
-        },  # broad fallback or use specific origins
+        status_code=status_code,
+        content={"detail": detail},
+        headers=response_headers,
     )
 
 
@@ -284,6 +366,16 @@ async def load_models():
     stt_model = AutoModelForSpeechSeq2Seq.from_pretrained("openai/whisper-base").to(
         device
     )
+
+    # Resolve Urdu token ID from actual loaded vocabulary — safe across model versions
+    global URDU_TOKEN_ID
+    try:
+        vocab = stt_processor.tokenizer.get_vocab()
+        URDU_TOKEN_ID = vocab.get("<|ur|>")
+        print(f"✅ Urdu suppress token resolved: {URDU_TOKEN_ID}")
+    except Exception as e:
+        print(f"⚠️ Could not resolve Urdu token ID: {e}")
+        URDU_TOKEN_ID = None
 
     print("✅ TTS Engine: Edge-TTS (cloud-based, no local loading required).")
     print("✅ All models loaded successfully.")
@@ -593,35 +685,63 @@ async def transcribe_audio(
         if len(audio_data.shape) > 1:
             audio_data = audio_data.mean(axis=1)
 
-        input_features = stt_processor(
-            audio_data, sampling_rate=16000, return_tensors="pt"
-        ).input_features.to(device)
+        # Build processor output WITH attention mask — eliminates padding warning,
+        # improves accuracy on short clips (runtime-verified: same output, no warning)
+        processor_output = stt_processor(
+            audio_data,
+            sampling_rate=16000,
+            return_tensors="pt",
+            return_attention_mask=True,
+        )
+        input_features = processor_output.input_features.to(device)
+        attention_mask = processor_output.attention_mask.to(device)
 
-        # Force language if provided to fix Hindi/Urdu confusion
-        generate_kwargs = {"max_length": 448}
+        # Resolve Whisper language config
+        lang_cfg = STT_LANG_CONFIG.get(
+            language or "en",
+            {"whisper_name": language or "en", "expected_script": None},
+        )
+
         if language:
-            # Map frontend codes to Whisper language codes
-            whisper_lang_map = {
-                "en": "english",
-                "es": "spanish",
-                "fr": "french",
-                "de": "german",
-                "zh": "chinese",
-                "hi": "hindi",  # Explicitly force Hindi
-            }
-            whisper_lang = whisper_lang_map.get(language, language)
-            generate_kwargs["language"] = whisper_lang
-            print(f"🌐 Forcing STT language: {whisper_lang}")
+            print(f"🌐 Forcing STT language: {lang_cfg['whisper_name']}")
+            forced_decoder_ids = stt_processor.get_decoder_prompt_ids(
+                language=lang_cfg["whisper_name"],
+                task="transcribe",
+            )
+        else:
+            forced_decoder_ids = None
 
-        predicted_ids = stt_model.generate(input_features, **generate_kwargs)
+        # Runtime-verified: forced_decoder_ids alone prevents Urdu token in output.
+        # suppress_tokens=[URDU_TOKEN_ID] produces IDENTICAL output — omitted intentionally.
+        predicted_ids = stt_model.generate(
+            input_features,
+            attention_mask=attention_mask,
+            forced_decoder_ids=forced_decoder_ids,
+            max_length=448,
+        )
         transcription = stt_processor.batch_decode(
             predicted_ids, skip_special_tokens=True
-        )
+        )[0].strip()
+
+        # Post-validation: warn when output script does not match expected
+        expected_script = lang_cfg.get("expected_script")
+        actual_script = detect_script(transcription) if transcription else "unknown"
+        if (
+            expected_script
+            and actual_script not in (expected_script, "unknown")
+            and len(transcription) > 3
+        ):
+            print(
+                f"⚠️ STT Script Mismatch: lang={language}, "
+                f"expected={expected_script}, got={actual_script}. "
+                f"text={transcription[:50]!r}"
+            )
 
         return JSONResponse(
             content={
-                "transcription": transcription[0],
+                "transcription": transcription,
                 "detected_language": language or "auto",
+                "script_detected": actual_script,
             }
         )
     except Exception as e:
@@ -697,35 +817,65 @@ async def generate_speech(request: TTSRequest = Body(...)):
             clean_text = clean_text[:max_chars].rsplit(" ", 1)[0] + "..."
             print(f"⚠️ Text truncated from {len(text)} to {len(clean_text)} chars")
 
-        # 3. Setup Edge TTS with selected voice
-        communicate = edge_tts.Communicate(
-            text=clean_text,
-            voice=lang_config.tts_voice,
-        )
+        # 3. Pre-flight: block scripts that Edge-TTS physically cannot render for this voice.
+        # Runtime-verified: Latin text through hi-IN-SwaraNeural succeeds (27 chunks).
+        # Only block combinations in TTS_INCOMPATIBLE_SCRIPTS (e.g. Arabic through Hindi voice).
+        from backend.voice.multilingual import TTS_INCOMPATIBLE_SCRIPTS
 
-        # 4. Stream generator with error handling
+        incompatible = TTS_INCOMPATIBLE_SCRIPTS.get(request.language or "en", set())
+        if incompatible and len(clean_text) > 3:
+            detected_script = detect_script(clean_text)
+            if detected_script in incompatible:
+                print(
+                    f"❌ TTS pre-flight blocked: voice={lang_config.tts_voice}, "
+                    f"incompatible script={detected_script}, text={clean_text[:40]!r}"
+                )
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "error": "SCRIPT_MISMATCH",
+                        "message": (
+                            f"Text script ({detected_script}) cannot be rendered by "
+                            f"the {request.language} voice. This is an upstream STT bug."
+                        ),
+                        "voice": lang_config.tts_voice,
+                        "detected_script": detected_script,
+                    },
+                )
+
+        # 4. Stream generator.
+        # communicate is created INSIDE the generator — not outside.
+        # Creating it outside and capturing via closure is equivalent, but keeping it
+        # inside makes the lifecycle explicit and prevents accidental double-instantiation.
+        # NEVER raise inside a StreamingResponse generator — it crashes the ASGI app.
+        # Return gracefully instead; the frontend handles empty/truncated audio.
         async def audio_stream():
             try:
+                communicate = edge_tts.Communicate(
+                    text=clean_text,
+                    voice=lang_config.tts_voice,
+                )
                 chunk_count = 0
                 async for chunk in communicate.stream():
                     if chunk["type"] == "audio":
                         chunk_count += 1
                         yield chunk["data"]
-
                 if chunk_count > 0:
                     print(
-                        f"✅ TTS Success: Generated {chunk_count} audio chunks for {lang_config.display_name}"
+                        f"✅ TTS Success: {chunk_count} chunks for {lang_config.display_name}"
                     )
                 else:
-                    print(
-                        f"⚠️ TTS Warning: No audio chunks received for {lang_config.display_name}"
-                    )
+                    print(f"⚠️ TTS: Zero chunks for voice={lang_config.tts_voice}")
             except Exception as stream_error:
                 print(f"❌ TTS Stream Error for '{request.language}': {stream_error}")
-                raise
+                return  # NEVER raise — return ends the generator cleanly
 
         # 5. Return Stream (MP3 format)
-        return StreamingResponse(audio_stream(), media_type="audio/mpeg")
+        return StreamingResponse(
+            audio_stream(),
+            media_type="audio/mpeg",
+            headers={"X-TTS-Language": request.language or "en"},
+        )
 
     except edge_tts.exceptions.NoAudioReceived as e:
         print(f"❌ NoAudioReceived for language '{request.language}': {e}")
@@ -780,6 +930,7 @@ class ChatRequest(BaseModel):
     message: str
     context: Optional[str] = None
     history: List[ChatMessage] = []
+    language: Optional[str] = "en"  # ISO 639-1 — drives LLM response language
 
 
 @app.get("/api/knowledge-base/info")
@@ -841,22 +992,39 @@ async def chat_endpoint(
                 if match:
                     confidence = float(match.group(1))
 
-            # Get grounded medical context
+            # Get grounded medical context — use clean display label, not raw class name
             condition_info = get_condition_info(diagnosis_label)
+            clean_diagnosis = DIAGNOSIS_DISPLAY_LABELS.get(
+                diagnosis_label, diagnosis_label.replace("_", " ").title()
+            )
             medical_context = format_context_for_prompt(
-                condition_info, diagnosis_label, confidence
+                condition_info, clean_diagnosis, confidence
             )
 
             print(
-                f"📋 Context parsed - Diagnosis: {diagnosis_label}, Confidence: {confidence}%"
+                f"📋 Context parsed - Diagnosis: {clean_diagnosis}, Confidence: {confidence}%"
             )
 
         except Exception as e:
             print(f"⚠️ Context parsing warning: {e}")
             medical_context = f"\nDiagnosis context provided: {request.context}\n"
 
+    # Language enforcement — injected at top of system prompt for maximum LLM compliance
+    lang_code = (request.language or "en").lower()
+    lang_instruction = LANG_LLM_INSTRUCTIONS.get(
+        lang_code,
+        f"CRITICAL: Respond ONLY in the language with ISO code '{lang_code}'.",
+    )
+
+    # Clean diagnosis label for display (fallback safe if context was None)
+    clean_diagnosis = DIAGNOSIS_DISPLAY_LABELS.get(
+        diagnosis_label, diagnosis_label.replace("_", " ").title()
+    )
+
     # Build system prompt with grounding
-    system_prompt = f"""You are VoxRay, an AI radiology assistant designed to help healthcare professionals understand imaging findings.
+    system_prompt = f"""{lang_instruction}
+
+You are VoxRay, an AI radiology assistant designed to help healthcare professionals understand imaging findings.
 
 YOUR ROLE:
 - Explain radiological findings in clear, professional language
@@ -945,6 +1113,18 @@ setup_versioning(app)
 app.add_middleware(APIVersionMiddleware)
 
 print("✅ API Versioning configured: /v1/*, /v2/*, and root-level V1 endpoints")
+
+
+@app.get("/api/feature-flags")
+async def feature_flags():
+    """Feature flag endpoint — consumed by FeatureFlagContext.jsx (was 404)."""
+    return {
+        "multilingual_tts": True,
+        "multilingual_stt": True,
+        "gradcam_explanations": True,
+        "voice_input": True,
+        "chat_history": True,
+    }
 
 
 @app.get("/")

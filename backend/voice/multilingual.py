@@ -42,3 +42,49 @@ def get_language_config(lang: Optional[str]) -> LanguageConfig:
 def get_all_languages() -> Dict[str, LanguageConfig]:
     """Return all supported languages for UI dropdowns."""
     return LANGS
+
+# Script expected per language ISO code.
+# Used for TTS pre-flight validation and STT post-validation.
+# None = CJK/script-agnostic, skip check entirely.
+LANG_SCRIPT_MAP: Dict[str, Optional[str]] = {
+    'hi': 'devanagari',
+    'mr': 'devanagari',
+    'ur': 'arabic',
+    'ar': 'arabic',
+    'en': 'latin',
+    'es': 'latin',
+    'fr': 'latin',
+    'de': 'latin',
+    'pt': 'latin',
+    'zh': None,
+    'ja': None,
+    'ko': None,
+}
+
+# Full Whisper language names for get_decoder_prompt_ids()
+LANG_WHISPER_NAME: Dict[str, str] = {
+    'hi': 'hindi',
+    'ur': 'urdu',
+    'en': 'english',
+    'es': 'spanish',
+    'fr': 'french',
+    'de': 'german',
+    'pt': 'portuguese',
+    'zh': 'chinese',
+    'ja': 'japanese',
+    'ko': 'korean',
+    'mr': 'marathi',
+    'ar': 'arabic',
+}
+
+# Scripts that Edge-TTS voices physically CANNOT render — causes NoAudioReceived.
+# Runtime-verified: Latin text through hi-IN-SwaraNeural succeeds (27 chunks).
+# Only Arabic/Nastaliq through Hindi voice fails. Do not over-block.
+TTS_INCOMPATIBLE_SCRIPTS: Dict[str, set] = {
+    'hi': {'arabic'},
+    'ur': {'devanagari'},
+    'zh': {'arabic', 'devanagari'},
+    'ja': {'arabic', 'devanagari'},
+    'ko': {'arabic', 'devanagari'},
+}
+

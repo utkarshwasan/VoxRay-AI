@@ -345,6 +345,13 @@ const VoiceSection = ({ currentDiagnosis }) => {
   const [selectedLanguage, setSelectedLanguage] = useState('en');
   const selectedLanguageRef = useRef('en'); // Ref for callbacks (always current)
 
+  // Ref for currentDiagnosis — avoids stale closure in useCallback
+  // (useCallback re-memoization and the triggering useEffect fire in the same render cycle)
+  const currentDiagnosisRef = useRef(currentDiagnosis);
+  useEffect(() => {
+    currentDiagnosisRef.current = currentDiagnosis;
+  }, [currentDiagnosis]);
+
   // Sync ref with state
   useEffect(() => {
     selectedLanguageRef.current = selectedLanguage;
@@ -466,9 +473,10 @@ const VoiceSection = ({ currentDiagnosis }) => {
     try {
       const headers = await getAuthHeaders();
       
-      // Build context string for backend
-      const contextStr = currentDiagnosis 
-        ? `Diagnosis: ${currentDiagnosis.diagnosis}, Confidence: ${(currentDiagnosis.confidence * 100).toFixed(1)}%` 
+      // Build context string using ref — avoids stale closure where currentDiagnosis
+      // is still null/old during the first sterile-mode auto-prompt render cycle
+      const contextStr = currentDiagnosisRef.current
+        ? `Diagnosis: ${currentDiagnosisRef.current.diagnosis}, Confidence: ${(currentDiagnosisRef.current.confidence * 100).toFixed(1)}%`
         : null;
       
       // Build history payload (filtered and truncated)
@@ -486,7 +494,8 @@ const VoiceSection = ({ currentDiagnosis }) => {
       const chatRes = await axios.post(`${API_BASE}/chat`, { 
         message: text, 
         context: contextStr,
-        history: historyPayload
+        history: historyPayload,
+        language: selectedLanguageRef.current,   // drives LLM response language
       }, { headers });
       
       const aiText = chatRes.data.response;
@@ -868,8 +877,10 @@ const VoiceSection = ({ currentDiagnosis }) => {
                       { code: 'es', label: 'Español', flag: '🇪🇸' },
                       { code: 'fr', label: 'Français', flag: '🇫🇷' },
                       { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
-                      { code: 'zh', label: '中文', flag: '🇨🇳' },
-                      { code: 'hi', label: 'हिन्दी', flag: '🇮🇳' }
+                      { code: 'zh', label: '中文', flag: '🇨🇳' }
+                      // Hindi disabled — STT (whisper-base) cannot reliably distinguish
+                      // spoken Hindi from Urdu. Re-enable after upgrading to whisper-medium.
+                      // { code: 'hi', label: 'हिन्दी', flag: '🇮🇳' }
                     ].map((lang) => (
                       <button
                         key={lang.code}
