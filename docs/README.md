@@ -2,9 +2,21 @@
 
 > An advanced multimodal medical console combining Computer Vision and Conversational AI to streamline clinical workflows.
 
+**Version: 2.0.0** | [View Changelog](../CHANGELOG_V1_TO_V2.md)
+
 ## Welcome
 
 Welcome to the VoxRay AI documentation. VoxRay AI acts as a hands-free, intelligent assistant for radiologists and clinicians, synergizing visual analysis with a voice-first interface. It offers instant pathology detection, visual explainability (Grad-CAM), and intelligent second opinions via LLMs.
+
+### What's New in v2.0
+
+- **API Versioning:** V1 and V2 endpoints with deprecation headers
+- **Feature Flags:** 16 configurable flags for gradual feature rollout
+- **Multilingual Support:** 5 active languages (EN, ES, FR, DE, ZH)
+- **DICOM Support:** Native DICOM file handling with anonymization
+- **Ensemble Predictions:** Uncertainty quantification for predictions
+- **Medical Vocabulary:** Automatic correction of medical terminology
+- **Prometheus Metrics:** Built-in `/metrics` endpoint for monitoring
 
 ## Quick Navigation
 
