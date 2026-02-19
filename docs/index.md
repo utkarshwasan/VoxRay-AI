@@ -15,7 +15,7 @@ VoxRay AI is an intelligent radiology assistant that combines computer vision, n
 
 - **X-Ray Analysis**: AI-powered chest X-ray classification with Grad-CAM explainability
 - **Voice Interface**: Speech-to-text input and text-to-speech output for hands-free operation
-- **Multilingual Support**: 6 languages supported (English, Spanish, French, German, Urdu, Chinese)
+- **Multilingual Support**: 5 languages supported (English, Spanish, French, German, Chinese)
 - **Clinical Chat**: AI assistant for radiological findings explanation
 
 ### V2 Enhancements
@@ -41,7 +41,6 @@ VoxRay AI is an intelligent radiology assistant that combines computer vision, n
 | Spanish  | es   | ✅ Active                    |
 | French   | fr   | ✅ Active                    |
 | German   | de   | ✅ Active                    |
-| Urdu     | ur   | ✅ Active                    |
 | Chinese  | zh   | ✅ Active                    |
 | Hindi    | hi   | ❌ Disabled (STT limitation) |
 

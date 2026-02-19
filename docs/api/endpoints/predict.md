@@ -1,6 +1,6 @@
 # Prediction API
 
-## Predict Image
+## Predict Image (V1)
 
 Analyzes a medical image for pathologies.
 
@@ -44,5 +44,60 @@ POST /predict/explain
 ```json
 {
   "heatmap_b64": "data:image/png;base64,iVBORw0KGgo..."
+}
+```
+
+---
+
+## Ensemble Prediction (V2)
+
+Multi-model prediction with uncertainty quantification.
+
+```http
+POST /v2/predict/image
+```
+
+**Requires:** `FF_ENSEMBLE_MODEL=true`
+
+### Response
+
+```json
+{
+  "diagnosis": "06_PNEUMONIA",
+  "confidence": 0.985,
+  "uncertainty": 0.023,
+  "model_votes": {
+    "resnet50": "PNEUMONIA",
+    "efficientnet": "PNEUMONIA",
+    "densenet": "PNEUMONIA"
+  }
+}
+```
+
+---
+
+## DICOM Prediction (V2)
+
+Predict from DICOM files with optional anonymization.
+
+```http
+POST /v2/predict/dicom
+```
+
+**Requires:** `FF_DICOM_SUPPORT=true`
+
+### Request Body (Multipart)
+
+| Field        | Type | Description       |
+| ------------ | ---- | ----------------- |
+| `dicom_file` | File | DICOM file (.dcm) |
+
+### Response
+
+```json
+{
+  "diagnosis": "06_PNEUMONIA",
+  "confidence": 0.985,
+  "anonymized": true
 }
 ```
