@@ -66,11 +66,14 @@ async def chat_v2(
             else:
                 diagnosis_label = context_str.split(",")[0].strip()
 
-            # Extract confidence
+            # Extract confidence — with .split()[0] guard for trailing text
             if "Confidence:" in context_str:
                 conf_part = context_str.split("Confidence:")[-1]
-                conf_str = conf_part.replace("%", "").replace(")", "").strip()
-                confidence = float(conf_str)
+                conf_str = conf_part.replace("%", "").replace(")", "").strip().split()[0]
+                try:
+                    confidence = float(conf_str)
+                except ValueError:
+                    confidence = 0.0
             elif "%" in context_str:
                 match = re.search(r"(\d+\.?\d*)%", context_str)
                 if match:
@@ -90,24 +93,30 @@ async def chat_v2(
             print(f"⚠️ Context parsing warning: {e}")
             medical_context = f"\nDiagnosis context provided: {request.context}\n"
 
-    # V2: Language instruction
+    # V2: Language instruction — matches main.py LANG_LLM_INSTRUCTIONS
+    # Hindi disabled: whisper-base cannot distinguish spoken Hindi from Urdu
     language_map = {
         "en": ("English", ""),
         "es": ("Spanish", ""),
         "fr": ("French", ""),
         "de": ("German", ""),
-        "zh": ("Chinese", ""),
-        "hi": ("Hindi", " Use Devanagari script (हिन्दी), NOT Urdu/Arabic script."),
+        "zh": ("Chinese", " Use Simplified Chinese (简体中文)."),
+        "ur": ("Urdu", " Use Nastaliq script."),
     }
     target_language, script_note = language_map.get(request.language, ("English", ""))
+    lang_code = (request.language or "en").lower()
+    
+    # Language instruction at TOP of system prompt for maximum compliance
     language_instruction = (
-        f"\n\nIMPORTANT: Respond in {target_language}.{script_note}"
-        if request.language != "en"
-        else ""
+        f"CRITICAL: Respond ONLY in {target_language}.{script_note}"
+        if lang_code != "en"
+        else "CRITICAL: Respond ONLY in English."
     )
 
-    # Build system prompt with grounding
-    system_prompt = f"""You are VoxRay, an AI radiology assistant designed to help healthcare professionals understand imaging findings.
+    # Build system prompt with grounding — language instruction FIRST
+    system_prompt = f"""{language_instruction}
+
+You are VoxRay, an AI radiology assistant designed to help healthcare professionals understand imaging findings.
 
 YOUR ROLE:
 - Explain radiological findings in clear, professional language
@@ -140,7 +149,6 @@ RESPONSE GUIDELINES:
    - You classified this image based on patterns but cannot pinpoint exact locations.
    - Specific localization requires radiologist review.
    - Always recommend professional consultation for treatment decisions.
-{language_instruction}
 """
 
     # Build message chain with history
@@ -158,6 +166,17 @@ RESPONSE GUIDELINES:
 
         if text:
             messages.append({"role": role, "content": text})
+
+    # Language enforcement injection for non-English — overrides conversation history momentum
+    if lang_code != "en":
+        messages.append({
+            "role": "user",
+            "content": f"[SYSTEM: {language_instruction} Your next response MUST be in this language only.]"
+        })
+        messages.append({
+            "role": "assistant",
+            "content": "[Understood. I will respond only in the required language.]"
+        })
 
     # Add current user message
     messages.append({"role": "user", "content": request.message})

@@ -6,7 +6,7 @@ from PIL import Image
 from fastapi import FastAPI, UploadFile, File, HTTPException, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse, Response
 from pydantic import BaseModel
 from backend.api.deps import get_current_user
 from typing import List, Optional
@@ -14,6 +14,11 @@ from backend.api.medical_context import (
     get_condition_info,
     format_context_for_prompt,
     get_knowledge_base_info,
+)
+from backend.voice.multilingual import (
+    get_language_config,
+    TTS_INCOMPATIBLE_SCRIPTS,
+    LANGS,
 )
 from dotenv import load_dotenv
 import os
@@ -56,14 +61,16 @@ TTS_VOICE = os.getenv("TTS_VOICE", "en-US-ChristopherNeural")
 
 # ─── Script Detection ────────────────────────────────────────────────────────
 def detect_script(text: str) -> str:
-    """Detect dominant Unicode script. Returns 'devanagari', 'arabic', 'latin', or 'unknown'."""
-    counts: dict = {"devanagari": 0, "arabic": 0, "latin": 0}
+    """Detect dominant Unicode script. Returns 'devanagari', 'arabic', 'cjk', 'latin', or 'unknown'."""
+    counts: dict = {"devanagari": 0, "arabic": 0, "cjk": 0, "latin": 0}
     for ch in text:
-        name = unicodedata.name(ch, "")
-        if "DEVANAGARI" in name:
+        cp = ord(ch)
+        if 0x0900 <= cp <= 0x097F:
             counts["devanagari"] += 1
-        elif "ARABIC" in name:
+        elif 0x0600 <= cp <= 0x06FF:
             counts["arabic"] += 1
+        elif 0x4E00 <= cp <= 0x9FFF or 0x3400 <= cp <= 0x4DBF:
+            counts["cjk"] += 1
         elif ch.isascii() and ch.isalpha():
             counts["latin"] += 1
     dominant = max(counts, key=counts.get)
@@ -114,40 +121,6 @@ DIAGNOSIS_DISPLAY_LABELS: dict = {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-
-# --- Stack Auth Manual Verification ---
-import jwt
-import requests
-from jwt import PyJWKClient
-
-# Stack Auth Configuration
-STACK_PROJECT_ID = os.getenv("STACK_PROJECT_ID", "your-project-id")
-
-
-def verify_stack_token(token: str):
-    """
-    Manually verify Stack Auth JWT token using JWKS.
-    Replacing the deprecated stack-auth-python SDK.
-    """
-    # This URL is standard for Stack Auth
-    url = f"https://api.stack-auth.com/api/v1/projects/{STACK_PROJECT_ID}/.well-known/jwks.json"
-
-    try:
-        jwks_client = PyJWKClient(url)
-        signing_key = jwks_client.get_signing_key_from_jwt(token)
-
-        payload = jwt.decode(
-            token,
-            signing_key.key,
-            algorithms=["RS256"],
-            audience=STACK_PROJECT_ID,
-            leeway=60,  # Add leeway for clock skew
-        )
-        return payload  # Returns user info (sub, email, etc.)
-    except Exception as e:
-        print(f"❌ Token validation failed: {str(e)}")
-        return None
-
 
 # Path resolution: backend/api/main.py -> backend/api -> backend -> root
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -287,6 +260,39 @@ async def global_exception_handler(request: FastAPIRequest, exc: Exception):
 async def health_check():
     """Health check endpoint for load balancers."""
     return {"status": "healthy", "version": "1.0.0"}
+
+
+@app.get("/metrics")
+async def metrics_endpoint():
+    """Prometheus metrics endpoint for monitoring stack."""
+    from backend.core.feature_flags import get_feature_flags
+    
+    flags = get_feature_flags().get_all_flags()
+    
+    # Build Prometheus-compatible metrics output
+    metrics_lines = [
+        "# HELP voxray_info Build information",
+        '# TYPE voxray_info gauge',
+        'voxray_info{version="1.0.0"} 1',
+        "",
+        "# HELP voxray_feature_flag Feature flag status (1=enabled, 0=disabled)",
+        "# TYPE voxray_feature_flag gauge",
+    ]
+    
+    for flag_name, flag_value in flags.items():
+        flag_int = 1 if flag_value else 0
+        metrics_lines.append(f'voxray_feature_flag{{flag="{flag_name}"}} {flag_int}')
+    
+    # Add model status metrics
+    metrics_lines.extend([
+        "",
+        "# HELP voxray_model_loaded Whether model is loaded",
+        "# TYPE voxray_model_loaded gauge",
+        f"voxray_model_loaded{{model=\"medical_classifier\"}} {1 if medical_model is not None else 0}",
+        f"voxray_model_loaded{{model=\"stt\"}} {1 if stt_model is not None else 0}",
+    ])
+    
+    return Response(content="\n".join(metrics_lines), media_type="text/plain")
 
 
 @app.on_event("startup")
@@ -801,11 +807,11 @@ async def generate_speech(request: TTSRequest = Body(...)):
 
         edge_tts = _edge_tts
 
-    from backend.voice.multilingual import get_language_config
-
     try:
         # Get voice for requested language
         lang_config = get_language_config(request.language)
+        if lang_config is None:
+            lang_config = get_language_config("en")
         print(f"🎙️ TTS Language: {lang_config.display_name} ({lang_config.tts_voice})")
 
         # 1. Normalize text (fixes pronunciation & skipping)
@@ -820,8 +826,6 @@ async def generate_speech(request: TTSRequest = Body(...)):
         # 3. Pre-flight: block scripts that Edge-TTS physically cannot render for this voice.
         # Runtime-verified: Latin text through hi-IN-SwaraNeural succeeds (27 chunks).
         # Only block combinations in TTS_INCOMPATIBLE_SCRIPTS (e.g. Arabic through Hindi voice).
-        from backend.voice.multilingual import TTS_INCOMPATIBLE_SCRIPTS
-
         incompatible = TTS_INCOMPATIBLE_SCRIPTS.get(request.language or "en", set())
         if incompatible and len(clean_text) > 3:
             detected_script = detect_script(clean_text)
@@ -985,8 +989,11 @@ async def chat_endpoint(
             # Extract confidence
             if "Confidence:" in context_str:
                 conf_part = context_str.split("Confidence:")[-1]
-                conf_str = conf_part.replace("%", "").replace(")", "").strip()
-                confidence = float(conf_str)
+                conf_str = conf_part.replace("%", "").replace(")", "").strip().split()[0]
+                try:
+                    confidence = float(conf_str)
+                except ValueError:
+                    confidence = 0.0
             elif "%" in context_str:
                 match = re.search(r"(\d+\.?\d*)%", context_str)
                 if match:
@@ -1075,6 +1082,17 @@ RESPONSE GUIDELINES:
         if text:
             messages.append({"role": role, "content": text})
 
+    # Language enforcement injection for non-English — overrides conversation history momentum
+    if lang_code != "en":
+        messages.append({
+            "role": "user",
+            "content": f"[SYSTEM: {lang_instruction} Your next response MUST be in this language only.]"
+        })
+        messages.append({
+            "role": "assistant",
+            "content": "[Understood. I will respond only in the required language.]"
+        })
+
     # Add current user message
     messages.append({"role": "user", "content": request.message})
 
@@ -1117,14 +1135,23 @@ print("✅ API Versioning configured: /v1/*, /v2/*, and root-level V1 endpoints"
 
 @app.get("/api/feature-flags")
 async def feature_flags():
-    """Feature flag endpoint — consumed by FeatureFlagContext.jsx (was 404)."""
-    return {
-        "multilingual_tts": True,
+    """Feature flag endpoint — merges real FeatureFlags system with frontend defaults."""
+    from backend.core.feature_flags import get_feature_flags
+    
+    # Get all flags from the real system (reads from FF_* env vars)
+    all_flags = get_feature_flags().get_all_flags()
+    
+    # Frontend-specific defaults (always exposed for UI consumption)
+    frontend_defaults = {
+        "multilingual_voice": all_flags.get("multilingual_voice", True),
         "multilingual_stt": True,
         "gradcam_explanations": True,
         "voice_input": True,
         "chat_history": True,
     }
+    
+    # Merge: real flags override defaults, all flags exposed
+    return {**frontend_defaults, **all_flags}
 
 
 @app.get("/")

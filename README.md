@@ -1,12 +1,3 @@
----
-title: VoxRay AI
-emoji: 🩻
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-app_port: 7860
----
-
 # VoxRay AI
 
 **An advanced multimodal medical console combining Computer Vision and Conversational AI to streamline clinical workflows.**

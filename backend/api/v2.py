@@ -1,6 +1,8 @@
+import logging
 from fastapi import APIRouter
 from backend.core.feature_flags import require_feature, FeatureFlag
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -21,23 +23,25 @@ async def health_v2():
     }
 
 
-# Include Sub-Routers
-# 1. Clinical (AG-03)
-from backend.api.routes import v2_clinical
+# Include Sub-Routers with graceful error handling for missing dependencies
+# 1. Clinical (AG-03) - requires TensorFlow
+try:
+    from backend.api.routes import v2_clinical
+    router.include_router(v2_clinical.router, tags=["clinical"])
+except ImportError as e:
+    logger.warning(f"v2_clinical router not loaded: {e}")
 
-router.include_router(v2_clinical.router, tags=["clinical"])
+# 2. Predict (AG-01) - requires TensorFlow
+try:
+    from backend.api.routes import v2_predict
+    router.include_router(v2_predict.router, tags=["predict"])
+except ImportError as e:
+    logger.warning(f"v2_predict router not loaded: {e}")
 
-# 2. Predict (AG-01)
-from backend.api.routes import v2_predict
-
-router.include_router(v2_predict.router, tags=["predict"])
-
-# 3. Voice (AG-04)
+# 3. Voice (AG-04) - lightweight, no TensorFlow dependency
 from backend.api.routes import v2_voice
-
 router.include_router(v2_voice.router)
 
-# 4. Chat (Multilingual)
+# 4. Chat (Multilingual) - lightweight, no TensorFlow dependency
 from backend.api.routes import v2_chat
-
 router.include_router(v2_chat.router, tags=["chat-v2"])

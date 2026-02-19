@@ -13,7 +13,12 @@ def test_root_redirect(client):
     response = client.get("/")
     assert response.status_code in [200, 404]
 
-def test_metrics_endpoint_not_exposed_publicly(client):
-    # Ensure no unintended metrics exposure
+def test_metrics_endpoint_exposed_for_prometheus(client):
+    # Metrics endpoint is now intentionally exposed for Prometheus monitoring
     response = client.get("/metrics")
-    assert response.status_code == 404
+    assert response.status_code == 200
+    assert "text/plain" in response.headers["content-type"]
+    # Verify Prometheus format
+    content = response.text
+    assert "voxray_info" in content
+    assert "voxray_feature_flag" in content

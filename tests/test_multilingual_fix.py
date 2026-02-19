@@ -25,13 +25,16 @@ TEST_TOKEN = os.getenv("VOXRAY_TEST_TOKEN", "")
 
 
 def detect_script(text: str) -> str:
-    counts = {"devanagari": 0, "arabic": 0, "latin": 0}
+    """Detect dominant Unicode script using codepoint ranges (matches production)."""
+    counts = {"devanagari": 0, "arabic": 0, "cjk": 0, "latin": 0}
     for ch in text:
-        n = unicodedata.name(ch, "")
-        if "DEVANAGARI" in n:
+        cp = ord(ch)
+        if 0x0900 <= cp <= 0x097F:
             counts["devanagari"] += 1
-        elif "ARABIC" in n:
+        elif 0x0600 <= cp <= 0x06FF:
             counts["arabic"] += 1
+        elif 0x4E00 <= cp <= 0x9FFF or 0x3400 <= cp <= 0x4DBF:
+            counts["cjk"] += 1
         elif ch.isascii() and ch.isalpha():
             counts["latin"] += 1
     dominant = max(counts, key=counts.get)
@@ -41,8 +44,9 @@ def detect_script(text: str) -> str:
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="function")
 async def client():
+    """Create a fresh async client for each test to avoid event loop issues."""
     async with httpx.AsyncClient(timeout=30) as c:
         yield c
 
@@ -51,7 +55,7 @@ async def client():
 def auth_headers():
     if not TEST_TOKEN:
         pytest.skip("VOXRAY_TEST_TOKEN not set — skipping auth-required tests")
-    return {"Authorization": f"Bearer {TEST_TOKEN}"}
+    return {"x-stack-access-token": TEST_TOKEN}
 
 
 # ── Unit: Script Detection (no server needed) ─────────────────────────────────
@@ -99,7 +103,7 @@ async def test_feature_flags_now_exists(client):
     assert r.status_code == 200, "feature-flags route still missing"
     data = r.json()
     assert data.get("multilingual_stt") is True
-    assert data.get("multilingual_tts") is True
+    assert data.get("multilingual_voice") is True
 
 
 # ── TTS Tests ─────────────────────────────────────────────────────────────────

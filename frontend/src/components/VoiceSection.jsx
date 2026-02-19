@@ -1,16 +1,31 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo, startTransition } from 'react';
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useMemo,
+  startTransition,
+} from "react";
 // eslint-disable-next-line no-unused-vars
-import { AnimatePresence, motion } from 'framer-motion';
-import { Mic, Square, Sparkles, Activity, RefreshCw, Volume2, AlertCircle, Globe } from 'lucide-react';
-import { useFeatureFlags } from '../contexts/FeatureFlagContext';
-import axios from 'axios';
-import AudioRecorderPolyfill from 'audio-recorder-polyfill';
-import { useUser } from '@stackframe/react';
-import PropTypes from 'prop-types';
-
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  Mic,
+  Square,
+  Sparkles,
+  Activity,
+  RefreshCw,
+  Volume2,
+  AlertCircle,
+  Globe,
+} from "lucide-react";
+import { useFeatureFlags } from "../contexts/FeatureFlagContext";
+import axios from "axios";
+import AudioRecorderPolyfill from "audio-recorder-polyfill";
+import { useUser } from "@stackframe/react";
+import PropTypes from "prop-types";
 
 // --- CONFIG ---
-const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 const RECORDING_LIMIT = 60; // seconds
 const WARNING_TIME = 30;
 const CRITICAL_TIME = 50;
@@ -18,23 +33,32 @@ const MAX_HISTORY_LENGTH = 6;
 const MAX_MESSAGE_LENGTH = 500;
 
 // Voice Activity Detection (VAD) for Sterile Mode
-// Voice Activity Detection (VAD) for Sterile Mode
-const SILENCE_THRESHOLD = 0.025;      // Optimized for time-domain (0.025 = -32dB)
-const SILENCE_DURATION_MS = 1500;     // 1.5 seconds of silence triggers stop
-const MIN_SPEECH_DURATION_MS = 500;   // Minimum recording before silence detection
-const VAD_INTERVAL_MS = 50;           // Polling rate
+const SILENCE_THRESHOLD = 0.025; // Optimized for time-domain (0.025 = -32dB)
+const SILENCE_DURATION_MS = 1500; // 1.5 seconds of silence triggers stop
+const MIN_SPEECH_DURATION_MS = 500; // Minimum recording before silence detection
+const VAD_INTERVAL_MS = 50; // Polling rate
 
 // Quick action definitions with specific prompts
 const QUICK_ACTIONS = [
-  { label: 'Explain Findings', prompt: 'Explain the radiological findings detected in this scan' },
-  { label: 'Check Severity', prompt: 'What is the severity level of this condition and what does it mean' },
-  { label: 'Next Steps', prompt: 'What are the recommended next steps for this diagnosis' }
+  {
+    label: "Explain Findings",
+    prompt: "Explain the radiological findings detected in this scan",
+  },
+  {
+    label: "Check Severity",
+    prompt:
+      "What is the severity level of this condition and what does it mean",
+  },
+  {
+    label: "Next Steps",
+    prompt: "What are the recommended next steps for this diagnosis",
+  },
 ];
 
 // --- UTILS ---
 const generateId = () => {
-  return typeof crypto !== 'undefined' && crypto.randomUUID 
-    ? crypto.randomUUID() 
+  return typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 };
 
@@ -42,176 +66,222 @@ const generateId = () => {
  * Check if user prefers reduced motion
  */
 const prefersReducedMotion = () => {
-  if (typeof window === 'undefined') return false;
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 };
 
 // --- SUB-COMPONENTS ---
 
 // 1. Voice Orb (The Visual Core) + VAD Debugger
-const VoiceOrb = React.memo(({ status, recordingTime, onClick, debugRMS, showDebug }) => {
-  // Calculate ring progress (circumference ~289)
-  const progress = Math.min((recordingTime / RECORDING_LIMIT) * 289, 289);
-  
-  const getStrokeColor = () => {
-    if (recordingTime >= CRITICAL_TIME) return '#ef4444'; // Red
-    if (recordingTime >= WARNING_TIME) return '#f59e0b'; // Amber
-    return 'url(#gradient)';
-  };
+const VoiceOrb = React.memo(
+  ({ status, recordingTime, onClick, debugRMS, showDebug }) => {
+    // Calculate ring progress (circumference ~289)
+    const progress = Math.min((recordingTime / RECORDING_LIMIT) * 289, 289);
 
-  const getAriaLabel = () => {
-    switch (status) {
-      case 'IDLE': return 'Start voice recording';
-      case 'LISTENING': return 'Stop recording';
-      case 'PROCESSING': return 'Processing request';
-      case 'SPEAKING': return 'Stop playback';
-      default: return 'Voice assistant';
-    }
-  };
+    const getStrokeColor = () => {
+      if (recordingTime >= CRITICAL_TIME) return "#ef4444"; // Red
+      if (recordingTime >= WARNING_TIME) return "#f59e0b"; // Amber
+      return "url(#gradient)";
+    };
 
-  // Initialize particles once using state lazy initializer to ensure purity
-  const [particles] = useState(() => [...Array(8)].map((_, i) => ({
-    id: i,
-    left: `${15 + Math.random() * 70}%`,
-    delay: i * 0.3
-  })));
+    const getAriaLabel = () => {
+      switch (status) {
+        case "IDLE":
+          return "Start voice recording";
+        case "LISTENING":
+          return "Stop recording";
+        case "PROCESSING":
+          return "Processing request";
+        case "SPEAKING":
+          return "Stop playback";
+        default:
+          return "Voice assistant";
+      }
+    };
 
-  return (
-    <div className="relative w-24 h-24 flex items-center justify-center">
-      {/* Particle System (Only active when listening) */}
-      <AnimatePresence>
-        {status === 'LISTENING' && (
-          <>
-            {particles.map((p) => (
-              <motion.div
-                key={p.id}
-                initial={{ opacity: 0, y: 0, scale: 0.5 }}
-                animate={{ opacity: [0, 1, 0], y: -70, scale: 0 }}
-                transition={{ duration: 2.5, repeat: Infinity, delay: p.delay, ease: "easeOut" }}
-                className="absolute w-1.5 h-1.5 bg-white/80 rounded-full pointer-events-none"
-                style={{ left: p.left, top: '50%' }}
-              />
-            ))}
-          </>
-        )}
-      </AnimatePresence>
+    // Initialize particles once using state lazy initializer to ensure purity
+    const [particles] = useState(() =>
+      [...Array(8)].map((_, i) => ({
+        id: i,
+        left: `${15 + Math.random() * 70}%`,
+        delay: i * 0.3,
+      }))
+    );
 
-      {/* Progress Ring SVG */}
-      <svg className="absolute inset-0 w-full h-full drop-shadow-[0_0_10px_rgba(239,68,68,0.3)]" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r="46" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="2" />
-        {status === 'LISTENING' && (
-          <circle 
-            cx="50" cy="50" r="46" 
-            fill="none" 
-            stroke={getStrokeColor()} 
-            strokeWidth="3" 
-            strokeLinecap="round" 
-            strokeDasharray="289" 
-            strokeDashoffset={289 - progress}
-            className="transition-all duration-300 ease-linear transform -rotate-90 origin-center" 
+    return (
+      <div className="relative w-24 h-24 flex items-center justify-center">
+        {/* Particle System (Only active when listening) */}
+        <AnimatePresence>
+          {status === "LISTENING" && (
+            <>
+              {particles.map((p) => (
+                <motion.div
+                  key={p.id}
+                  initial={{ opacity: 0, y: 0, scale: 0.5 }}
+                  animate={{ opacity: [0, 1, 0], y: -70, scale: 0 }}
+                  transition={{
+                    duration: 2.5,
+                    repeat: Infinity,
+                    delay: p.delay,
+                    ease: "easeOut",
+                  }}
+                  className="absolute w-1.5 h-1.5 bg-white/80 rounded-full pointer-events-none"
+                  style={{ left: p.left, top: "50%" }}
+                />
+              ))}
+            </>
+          )}
+        </AnimatePresence>
+
+        {/* Progress Ring SVG */}
+        <svg
+          className="absolute inset-0 w-full h-full drop-shadow-[0_0_10px_rgba(239,68,68,0.3)]"
+          viewBox="0 0 100 100"
+        >
+          <circle
+            cx="50"
+            cy="50"
+            r="46"
+            fill="none"
+            stroke="rgba(255,255,255,0.1)"
+            strokeWidth="2"
           />
-        )}
-        <defs>
-          <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#ef4444" />
-            <stop offset="100%" stopColor="#ec4899" />
-          </linearGradient>
-        </defs>
-      </svg>
+          {status === "LISTENING" && (
+            <circle
+              cx="50"
+              cy="50"
+              r="46"
+              fill="none"
+              stroke={getStrokeColor()}
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeDasharray="289"
+              strokeDashoffset={289 - progress}
+              className="transition-all duration-300 ease-linear transform -rotate-90 origin-center"
+            />
+          )}
+          <defs>
+            <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#ef4444" />
+              <stop offset="100%" stopColor="#ec4899" />
+            </linearGradient>
+          </defs>
+        </svg>
 
-      {/* Main Interaction Button */}
-      <motion.button
-        onClick={onClick}
-        onKeyDown={(e) => (e.key === ' ' || e.key === 'Enter') && onClick()}
-        aria-label={getAriaLabel()}
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        animate={status === 'LISTENING' 
-          ? { scale: [1, 1.05, 1], boxShadow: "0 0 40px rgba(239,68,68,0.6)" } 
-          : { scale: 1, boxShadow: "0 0 0px rgba(0,0,0,0)" }
-        }
-        transition={{ repeat: status === 'LISTENING' ? Infinity : 0, duration: 2 }}
-        className={`relative w-16 h-16 rounded-full flex items-center justify-center border border-white/20 z-10 
+        {/* Main Interaction Button */}
+        <motion.button
+          onClick={onClick}
+          onKeyDown={(e) => (e.key === " " || e.key === "Enter") && onClick()}
+          aria-label={getAriaLabel()}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          animate={
+            status === "LISTENING"
+              ? {
+                  scale: [1, 1.05, 1],
+                  boxShadow: "0 0 40px rgba(239,68,68,0.6)",
+                }
+              : { scale: 1, boxShadow: "0 0 0px rgba(0,0,0,0)" }
+          }
+          transition={{
+            repeat: status === "LISTENING" ? Infinity : 0,
+            duration: 2,
+          }}
+          className={`relative w-16 h-16 rounded-full flex items-center justify-center border border-white/20 z-10 
           transition-all duration-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900
-          ${status === 'LISTENING' 
-            ? 'bg-gradient-to-br from-red-500 to-pink-600 focus-visible:ring-red-400' 
-            : status === 'PROCESSING'
-              ? 'bg-gradient-to-br from-amber-500 to-orange-600 focus-visible:ring-amber-400'
-              : status === 'SPEAKING'
-                ? 'bg-gradient-to-br from-emerald-500 to-teal-600 shadow-[0_0_30px_rgba(16,185,129,0.4)] focus-visible:ring-emerald-400'
-                : 'bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg focus-visible:ring-indigo-400'
+          ${
+            status === "LISTENING"
+              ? "bg-gradient-to-br from-red-500 to-pink-600 focus-visible:ring-red-400"
+              : status === "PROCESSING"
+              ? "bg-gradient-to-br from-amber-500 to-orange-600 focus-visible:ring-amber-400"
+              : status === "SPEAKING"
+              ? "bg-gradient-to-br from-emerald-500 to-teal-600 shadow-[0_0_30px_rgba(16,185,129,0.4)] focus-visible:ring-emerald-400"
+              : "bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg focus-visible:ring-indigo-400"
           }`}
-      >
-        {status === 'LISTENING' ? (
-          <Square className="w-5 h-5 text-white fill-current rounded-sm" />
-        ) : status === 'PROCESSING' ? (
-          <RefreshCw className="w-6 h-6 text-white animate-spin" />
-        ) : status === 'SPEAKING' ? (
-          <Volume2 className="w-6 h-6 text-white" />
-        ) : (
-          <Mic className="w-6 h-6 text-white" />
-        )}
-      </motion.button>
-      
-      {/* Status Text & Timer */}
-      <div className="absolute -bottom-8 text-[10px] font-mono font-semibold tracking-widest transition-colors duration-300 w-full text-center">
-        {status === 'LISTENING' ? (
-          <span className={recordingTime >= CRITICAL_TIME ? 'text-red-400' : recordingTime >= WARNING_TIME ? 'text-amber-400' : 'text-red-300/90'}>
-            00:{recordingTime.toString().padStart(2, '0')}
-          </span>
-        ) : status === 'PROCESSING' ? (
-          <span className="text-amber-300/80 animate-pulse">THINKING...</span>
-        ) : status === 'SPEAKING' ? (
-          <span className="text-emerald-300/80 animate-pulse">SPEAKING</span>
-        ) : (
-          <span className="text-white/30">HOLD TO SPEAK</span>
-        )}
-      </div>
+        >
+          {status === "LISTENING" ? (
+            <Square className="w-5 h-5 text-white fill-current rounded-sm" />
+          ) : status === "PROCESSING" ? (
+            <RefreshCw className="w-6 h-6 text-white animate-spin" />
+          ) : status === "SPEAKING" ? (
+            <Volume2 className="w-6 h-6 text-white" />
+          ) : (
+            <Mic className="w-6 h-6 text-white" />
+          )}
+        </motion.button>
 
-      {/* Live Region for Screen Readers */}
-      <div role="status" aria-live="polite" className="sr-only">
-        {status === 'LISTENING' && `Recording: ${recordingTime} seconds`}
-        {status === 'PROCESSING' && 'Processing your request'}
-        {status === 'SPEAKING' && 'Playing AI response'}
-      </div>
+        {/* Status Text & Timer */}
+        <div className="absolute -bottom-8 text-[10px] font-mono font-semibold tracking-widest transition-colors duration-300 w-full text-center">
+          {status === "LISTENING" ? (
+            <span
+              className={
+                recordingTime >= CRITICAL_TIME
+                  ? "text-red-400"
+                  : recordingTime >= WARNING_TIME
+                  ? "text-amber-400"
+                  : "text-red-300/90"
+              }
+            >
+              00:{recordingTime.toString().padStart(2, "0")}
+            </span>
+          ) : status === "PROCESSING" ? (
+            <span className="text-amber-300/80 animate-pulse">THINKING...</span>
+          ) : status === "SPEAKING" ? (
+            <span className="text-emerald-300/80 animate-pulse">SPEAKING</span>
+          ) : (
+            <span className="text-white/30">HOLD TO SPEAK</span>
+          )}
+        </div>
 
-      {/* VAD Visual Debug Overlay (Only in Sterile Mode) */}
-      {showDebug && debugRMS > 0.005 && (
-        <div className="absolute inset-0 pointer-events-none z-0 flex items-center justify-center">
+        {/* Live Region for Screen Readers */}
+        <div role="status" aria-live="polite" className="sr-only">
+          {status === "LISTENING" && `Recording: ${recordingTime} seconds`}
+          {status === "PROCESSING" && "Processing your request"}
+          {status === "SPEAKING" && "Playing AI response"}
+        </div>
+
+        {/* VAD Visual Debug Overlay (Only in Sterile Mode) */}
+        {showDebug && debugRMS > 0.005 && (
+          <div className="absolute inset-0 pointer-events-none z-0 flex items-center justify-center">
             {/* Soft Ripple Base - Always visible when sound detected */}
             <motion.div
               animate={{
-                scale: [1, 1 + (debugRMS * 3)], // Reduced scale from 15 to 3
-                opacity: [0.1, 0.4]
+                scale: [1, 1 + debugRMS * 3], // Reduced scale from 15 to 3
+                opacity: [0.1, 0.4],
               }}
-              transition={{ duration: 0.1, ease: 'easeOut' }}
-              className={`absolute rounded-full w-full h-full border-2 ${debugRMS > SILENCE_THRESHOLD ? 'border-emerald-500/30' : 'border-red-500/20'}`}
+              transition={{ duration: 0.1, ease: "easeOut" }}
+              className={`absolute rounded-full w-full h-full border-2 ${
+                debugRMS > SILENCE_THRESHOLD
+                  ? "border-emerald-500/30"
+                  : "border-red-500/20"
+              }`}
             />
-            
-            {/* Threshold Ring Marker - Subtle guide */}
-             <div 
-               className="absolute rounded-full border border-dashed border-white/20" 
-               style={{ 
-                 width: `${100 + (SILENCE_THRESHOLD * 200)}%`, // Calibrated visual marker
-                 height: `${100 + (SILENCE_THRESHOLD * 200)}%` 
-               }} 
-             />
 
-             {/* Dynamic Sound Wave */}
+            {/* Threshold Ring Marker - Subtle guide */}
+            <div
+              className="absolute rounded-full border border-dashed border-white/20"
+              style={{
+                width: `${100 + SILENCE_THRESHOLD * 200}%`, // Calibrated visual marker
+                height: `${100 + SILENCE_THRESHOLD * 200}%`,
+              }}
+            />
+
+            {/* Dynamic Sound Wave */}
             {debugRMS > SILENCE_THRESHOLD && (
-                 <motion.div
-                  initial={{ scale: 1, opacity: 0.6 }}
-                  animate={{ scale: 1.5, opacity: 0 }} // Reduced max scale
-                  transition={{ duration: 1, repeat: Infinity, ease: "easeOut" }}
-                  className="absolute rounded-full w-full h-full border border-emerald-500/40"
-                 />
-             )}
-        </div>
-      )}
-    </div>
-  );
-});
-VoiceOrb.displayName = 'VoiceOrb';
+              <motion.div
+                initial={{ scale: 1, opacity: 0.6 }}
+                animate={{ scale: 1.5, opacity: 0 }} // Reduced max scale
+                transition={{ duration: 1, repeat: Infinity, ease: "easeOut" }}
+                className="absolute rounded-full w-full h-full border border-emerald-500/40"
+              />
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+);
+VoiceOrb.displayName = "VoiceOrb";
 
 // 2. Karaoke Text (Word-by-word reveal)
 const KaraokeText = React.memo(({ text }) => {
@@ -227,21 +297,23 @@ const KaraokeText = React.memo(({ text }) => {
       if (index >= words.length - 1) {
         clearInterval(interval);
       }
-      setRevealedIndex(prev => {
+      setRevealedIndex((prev) => {
         index = prev + 1;
         return index;
       });
     }, 200);
-    
+
     return () => clearInterval(interval);
   }, [text, words.length]);
 
   return (
     <p>
       {words.map((word, i) => (
-        <span 
-          key={i} 
-          className={`transition-colors duration-200 ${i <= revealedIndex ? 'text-white' : 'text-white/30'}`}
+        <span
+          key={i}
+          className={`transition-colors duration-200 ${
+            i <= revealedIndex ? "text-white" : "text-white/30"
+          }`}
         >
           {word}{" "}
         </span>
@@ -249,53 +321,75 @@ const KaraokeText = React.memo(({ text }) => {
     </p>
   );
 });
-KaraokeText.displayName = 'KaraokeText';
+KaraokeText.displayName = "KaraokeText";
 
 // 3. Chat Message (Handles User, AI, and Error messages)
 const ChatMessage = React.memo(({ msg, onRetry, isRetrying }) => {
-  const isAI = msg.role === 'assistant';
-  const isError = msg.role === 'error';
-  
+  const isAI = msg.role === "assistant";
+  const isError = msg.role === "error";
+
   return (
-    <motion.div 
+    <motion.div
       layout
       initial={{ opacity: 0, y: 10, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
-      className={`flex items-start gap-3 ${isAI || isError ? 'pr-6' : 'pl-10 justify-end'}`}
+      className={`flex items-start gap-3 ${
+        isAI || isError ? "pr-6" : "pl-10 justify-end"
+      }`}
     >
       {(isAI || isError) && (
-        <div className={`w-7 h-7 rounded-full border flex items-center justify-center flex-shrink-0 mt-1
-          ${isError ? 'bg-rose-900/30 border-rose-500/20' : 'bg-emerald-900/30 border-emerald-500/20'}`}>
-          {isError ? <AlertCircle className="w-3.5 h-3.5 text-rose-400" /> : <Sparkles className="w-3.5 h-3.5 text-emerald-400" />}
+        <div
+          className={`w-7 h-7 rounded-full border flex items-center justify-center flex-shrink-0 mt-1
+          ${
+            isError
+              ? "bg-rose-900/30 border-rose-500/20"
+              : "bg-emerald-900/30 border-emerald-500/20"
+          }`}
+        >
+          {isError ? (
+            <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+          ) : (
+            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+          )}
         </div>
       )}
-      
-      <div className={`
+
+      <div
+        className={`
         relative px-4 py-3 rounded-2xl border text-xs leading-relaxed shadow-lg backdrop-blur-md
-        ${isError 
-          ? 'bg-rose-900/20 border-rose-500/30 text-rose-200 rounded-tl-none'
-          : isAI 
-            ? 'bg-white/5 border-white/10 rounded-tl-none text-slate-200' 
-            : 'bg-gradient-to-br from-indigo-600 to-purple-700 border-white/10 rounded-tr-none text-white'
+        ${
+          isError
+            ? "bg-rose-900/20 border-rose-500/30 text-rose-200 rounded-tl-none"
+            : isAI
+            ? "bg-white/5 border-white/10 rounded-tl-none text-slate-200"
+            : "bg-gradient-to-br from-indigo-600 to-purple-700 border-white/10 rounded-tr-none text-white"
         }
-      `}>
-        {isAI && msg.isNew ? <KaraokeText key={msg.text} text={msg.text} /> : <p>{msg.text}</p>}
-        
+      `}
+      >
+        {isAI && msg.isNew ? (
+          <KaraokeText key={msg.text} text={msg.text} />
+        ) : (
+          <p>{msg.text}</p>
+        )}
+
         {/* Retry Button for Errors */}
         {isError && msg.retryable && msg.originalInput && (
           <div className="mt-2 flex gap-2">
-            <button 
+            <button
               onClick={() => onRetry && onRetry(msg.originalInput)}
               disabled={isRetrying}
               className={`px-3 py-1.5 rounded-full border text-[10px] transition-all flex items-center gap-1.5
-                ${isRetrying 
-                  ? 'bg-white/5 border-white/10 text-white/50 cursor-not-allowed' 
-                  : 'bg-white/10 hover:bg-white/20 border-white/10 text-white hover:scale-105'
+                ${
+                  isRetrying
+                    ? "bg-white/5 border-white/10 text-white/50 cursor-not-allowed"
+                    : "bg-white/10 hover:bg-white/20 border-white/10 text-white hover:scale-105"
                 }`}
             >
-              <RefreshCw className={`w-3 h-3 ${isRetrying ? 'animate-spin' : ''}`} />
-              {isRetrying ? 'Retrying...' : 'Retry'}
+              <RefreshCw
+                className={`w-3 h-3 ${isRetrying ? "animate-spin" : ""}`}
+              />
+              {isRetrying ? "Retrying..." : "Retry"}
             </button>
           </div>
         )}
@@ -309,13 +403,13 @@ const ChatMessage = React.memo(({ msg, onRetry, isRetrying }) => {
     </motion.div>
   );
 });
-ChatMessage.displayName = 'ChatMessage';
+ChatMessage.displayName = "ChatMessage";
 
 // --- MAIN CONTAINER ---
 
-const VoiceSection = ({ currentDiagnosis }) => {
-  const [status, setStatus] = useState('IDLE');
-  const [backendStatus, setBackendStatus] = useState('unknown'); // 'ready', 'waking', 'error' // IDLE, LISTENING, PROCESSING, SPEAKING
+const VoiceSection = ({ currentDiagnosis = null }) => {
+  const [status, setStatus] = useState("IDLE");
+  const [backendStatus, setBackendStatus] = useState("unknown"); // 'ready', 'waking', 'error' // IDLE, LISTENING, PROCESSING, SPEAKING
   const [messages, setMessages] = useState([]);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioUrl, setAudioUrl] = useState(null);
@@ -331,19 +425,19 @@ const VoiceSection = ({ currentDiagnosis }) => {
   const timerRef = useRef(null);
   const messagesRef = useRef(messages);
   const isProcessingRef = useRef(false);
-  
+
   // VAD refs for silence detection
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const silenceStartRef = useRef(null);
   const vadIntervalRef = useRef(null);
   const recordingStartTimeRef = useRef(null);
-  
+
   const user = useUser();
   const { flags } = useFeatureFlags();
   const multilingualEnabled = flags?.multilingual_voice === true;
-  const [selectedLanguage, setSelectedLanguage] = useState('en');
-  const selectedLanguageRef = useRef('en'); // Ref for callbacks (always current)
+  const [selectedLanguage, setSelectedLanguage] = useState("en");
+  const selectedLanguageRef = useRef("en"); // Ref for callbacks (always current)
 
   // Ref for currentDiagnosis — avoids stale closure in useCallback
   // (useCallback re-memoization and the triggering useEffect fire in the same render cycle)
@@ -365,7 +459,7 @@ const VoiceSection = ({ currentDiagnosis }) => {
       const reducedMotion = prefersReducedMotion();
       scrollRef.current.scrollTo({
         top: scrollRef.current.scrollHeight,
-        behavior: reducedMotion ? 'auto' : 'smooth'
+        behavior: reducedMotion ? "auto" : "smooth",
       });
     }
   }, [messages, status]);
@@ -377,12 +471,12 @@ const VoiceSection = ({ currentDiagnosis }) => {
 
   // 2. Timer & Auto-Stop Logic
   useEffect(() => {
-    if (status === 'LISTENING') {
+    if (status === "LISTENING") {
       timerRef.current = setInterval(() => {
-        setRecordingTime(t => {
+        setRecordingTime((t) => {
           if (t >= RECORDING_LIMIT) {
             // Check ref directly to avoid dependency cycle
-            if (mediaRecorderRef.current?.state === 'recording') {
+            if (mediaRecorderRef.current?.state === "recording") {
               mediaRecorderRef.current.stop();
             }
             return t;
@@ -408,8 +502,12 @@ const VoiceSection = ({ currentDiagnosis }) => {
   const getAuthHeaders = useCallback(async () => {
     try {
       const authJson = user ? await user.getAuthJson() : null;
-      return authJson?.accessToken ? { 'x-stack-access-token': authJson.accessToken } : {};
-    } catch { return {}; }
+      return authJson?.accessToken
+        ? { "x-stack-access-token": authJson.accessToken }
+        : {};
+    } catch {
+      return {};
+    }
   }, [user]);
 
   // --- CORE LOGIC ---
@@ -426,148 +524,175 @@ const VoiceSection = ({ currentDiagnosis }) => {
       role,
       text,
       timestamp: new Date(),
-      ...extras
+      ...extras,
     };
     // Use startTransition for non-urgent UI updates
     startTransition(() => {
-      setMessages(prev => [...prev, newMessage]);
+      setMessages((prev) => [...prev, newMessage]);
     });
     return newMessage.id;
   }, []);
 
   // Unified Handler: Text Input -> Chat -> TTS -> Play
-  const processTextQuery = useCallback(async (text) => {
-    // Prevent concurrent processing
-    if (isProcessingRef.current) {
-      console.warn('Already processing a request');
-      return;
-    }
-    
-    // Check network connectivity
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      setMessages(prev => [...prev, { 
-        id: generateId(), 
-        role: 'error', 
-        text: 'You appear to be offline. Please check your connection.',
-        retryable: false 
-      }]);
-      return;
-    }
-    
-    isProcessingRef.current = true;
-    setStatus('PROCESSING');
-    
-    // Add user message (deduplicated)
-    const currentMessages = messagesRef.current;
-    const lastMessage = currentMessages[currentMessages.length - 1];
-    const isDuplicate = lastMessage?.role === 'user' && 
-                        lastMessage?.text === text &&
-                        Date.now() - new Date(lastMessage.timestamp).getTime() < 2000;
-    
-    if (!isDuplicate) {
-      startTransition(() => {
-        setMessages(prev => [...prev, { id: generateId(), role: 'user', text, timestamp: new Date() }]);
-      });
-    }
+  const processTextQuery = useCallback(
+    async (text) => {
+      // Prevent concurrent processing
+      if (isProcessingRef.current) {
+        console.warn("Already processing a request");
+        return;
+      }
 
-    try {
-      const headers = await getAuthHeaders();
-      
-      // Build context string using ref — avoids stale closure where currentDiagnosis
-      // is still null/old during the first sterile-mode auto-prompt render cycle
-      const contextStr = currentDiagnosisRef.current
-        ? `Diagnosis: ${currentDiagnosisRef.current.diagnosis}, Confidence: ${(currentDiagnosisRef.current.confidence * 100).toFixed(1)}%`
-        : null;
-      
-      // Build history payload (filtered and truncated)
-      const historyPayload = currentMessages
-        .filter(m => m.role !== 'error')
-        .slice(-MAX_HISTORY_LENGTH)
-        .map(m => ({ 
-          role: m.role, 
-          text: m.text.length > MAX_MESSAGE_LENGTH 
-            ? m.text.substring(0, MAX_MESSAGE_LENGTH) + '...' 
-            : m.text 
-        }));
+      // Check network connectivity
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: generateId(),
+            role: "error",
+            text: "You appear to be offline. Please check your connection.",
+            retryable: false,
+          },
+        ]);
+        return;
+      }
 
-      // Chat API call with history
-      const chatRes = await axios.post(`${API_BASE}/chat`, { 
-        message: text, 
-        context: contextStr,
-        history: historyPayload,
-        language: selectedLanguageRef.current,   // drives LLM response language
-      }, { headers });
-      
-      const aiText = chatRes.data.response;
+      isProcessingRef.current = true;
+      setStatus("PROCESSING");
 
-      // TTS API call
-      const ttsRes = await axios.post(
-        `${API_BASE}/generate/speech`, 
-        { 
-          text: aiText,
-          language: selectedLanguageRef.current  // Use ref to avoid stale closure 
-        }, 
-        { headers, responseType: 'blob' }
-      );
-      
-      const url = URL.createObjectURL(ttsRes.data);
-      setAudioUrl(url);
-      
-      startTransition(() => {
-        setMessages(prev => [...prev, { 
-          id: generateId(), 
-          role: 'assistant', 
-          text: aiText, 
-          isNew: true, 
-          timestamp: new Date() 
-        }]);
-      });
-      
-      // Play audio
-      setStatus('SPEAKING');
-      if (audioPlayerRef.current) {
-        audioPlayerRef.current.src = url;
-        audioPlayerRef.current.play().catch(err => {
-          console.error('Audio playback error:', err);
-          setStatus('IDLE');
+      // Add user message (deduplicated)
+      const currentMessages = messagesRef.current;
+      const lastMessage = currentMessages[currentMessages.length - 1];
+      const isDuplicate =
+        lastMessage?.role === "user" &&
+        lastMessage?.text === text &&
+        Date.now() - new Date(lastMessage.timestamp).getTime() < 2000;
+
+      if (!isDuplicate) {
+        startTransition(() => {
+          setMessages((prev) => [
+            ...prev,
+            { id: generateId(), role: "user", text, timestamp: new Date() },
+          ]);
         });
       }
 
-    } catch (e) {
-      console.error('Query processing error:', e);
-      setStatus('IDLE');
-      
-      let errorText = 'Something went wrong. Please try again.';
-      if (e.response?.status === 401) {
-        errorText = 'Session expired. Please refresh the page.';
-      } else if (e.response?.status === 503) {
-        errorText = 'Server is unavailable. Please try again later.';
-      } else if (e.code === 'ERR_NETWORK') {
-        errorText = 'Network error. Please check your connection.';
+      try {
+        const headers = await getAuthHeaders();
+
+        // Build context string using ref — avoids stale closure where currentDiagnosis
+        // is still null/old during the first sterile-mode auto-prompt render cycle
+        const contextStr = currentDiagnosisRef.current
+          ? `Diagnosis: ${
+              currentDiagnosisRef.current.diagnosis
+            }, Confidence: ${(
+              currentDiagnosisRef.current.confidence * 100
+            ).toFixed(1)}%`
+          : null;
+
+        // Build history payload (filtered and truncated)
+        const historyPayload = currentMessages
+          .filter((m) => m.role !== "error")
+          .slice(-MAX_HISTORY_LENGTH)
+          .map((m) => ({
+            role: m.role,
+            text:
+              m.text.length > MAX_MESSAGE_LENGTH
+                ? m.text.substring(0, MAX_MESSAGE_LENGTH) + "..."
+                : m.text,
+          }));
+
+        // Chat API call with history
+        const chatRes = await axios.post(
+          `${API_BASE}/chat`,
+          {
+            message: text,
+            context: contextStr,
+            history: historyPayload,
+            language: selectedLanguageRef.current, // drives LLM response language
+          },
+          { headers }
+        );
+
+        const aiText = chatRes.data.response;
+
+        // TTS API call
+        const ttsRes = await axios.post(
+          `${API_BASE}/generate/speech`,
+          {
+            text: aiText,
+            language: selectedLanguageRef.current, // Use ref to avoid stale closure
+          },
+          { headers, responseType: "blob" }
+        );
+
+        const url = URL.createObjectURL(ttsRes.data);
+        setAudioUrl(url);
+
+        startTransition(() => {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: generateId(),
+              role: "assistant",
+              text: aiText,
+              isNew: true,
+              timestamp: new Date(),
+            },
+          ]);
+        });
+
+        // Play audio
+        setStatus("SPEAKING");
+        if (audioPlayerRef.current) {
+          audioPlayerRef.current.src = url;
+          audioPlayerRef.current.play().catch((err) => {
+            console.error("Audio playback error:", err);
+            setStatus("IDLE");
+          });
+        }
+      } catch (e) {
+        console.error("Query processing error:", e);
+        setStatus("IDLE");
+
+        let errorText = "Something went wrong. Please try again.";
+        if (e.response?.status === 401) {
+          errorText = "Session expired. Please refresh the page.";
+        } else if (e.response?.status === 503) {
+          errorText = "Server is unavailable. Please try again later.";
+        } else if (e.code === "ERR_NETWORK") {
+          errorText = "Network error. Please check your connection.";
+        }
+
+        startTransition(() => {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: generateId(),
+              role: "error",
+              text: errorText,
+              retryable: e.response?.status !== 401,
+              originalInput: text,
+            },
+          ]);
+        });
+      } finally {
+        isProcessingRef.current = false;
+        setIsRetrying(false);
       }
-      
-      startTransition(() => {
-        setMessages(prev => [...prev, { 
-          id: generateId(),
-          role: 'error', 
-          text: errorText, 
-          retryable: e.response?.status !== 401,
-          originalInput: text
-        }]);
-      });
-    } finally {
-      isProcessingRef.current = false;
-      setIsRetrying(false);
-    }
-  }, [currentDiagnosis, getAuthHeaders]);
+    },
+    [getAuthHeaders]
+  );
 
   // Retry a failed message
-  const handleRetry = useCallback((originalInput) => {
-    if (originalInput && !isProcessingRef.current) {
-      setIsRetrying(true);
-      processTextQuery(originalInput);
-    }
-  }, [processTextQuery]);
+  const handleRetry = useCallback(
+    (originalInput) => {
+      if (originalInput && !isProcessingRef.current) {
+        setIsRetrying(true);
+        processTextQuery(originalInput);
+      }
+    },
+    [processTextQuery]
+  );
 
   // Clear all messages
   const clearMessages = useCallback(() => {
@@ -577,7 +702,7 @@ const VoiceSection = ({ currentDiagnosis }) => {
   // Handler: Audio Blob -> Transcribe -> processTextQuery
   const processAudioBlob = useCallback(async () => {
     if (audioChunksRef.current.length === 0) {
-      setStatus('IDLE');
+      setStatus("IDLE");
       return;
     }
 
@@ -586,37 +711,44 @@ const VoiceSection = ({ currentDiagnosis }) => {
     }
 
     isProcessingRef.current = true;
-    setStatus('PROCESSING');
+    setStatus("PROCESSING");
 
     try {
-      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+      const audioBlob = new Blob(audioChunksRef.current, { type: "audio/wav" });
       audioChunksRef.current = []; // Clear early to prevent reprocessing
-      
+
       const formData = new FormData();
-      formData.append('audio_file', audioBlob);
+      formData.append("audio_file", audioBlob);
       const headers = await getAuthHeaders();
 
       // Pass selected language to STT (using ref)
-      const sttRes = await axios.post(`${API_BASE}/transcribe/audio`, formData, { 
-        headers,
-        params: { language: selectedLanguageRef.current } 
-      });
+      const sttRes = await axios.post(
+        `${API_BASE}/transcribe/audio`,
+        formData,
+        {
+          headers,
+          params: { language: selectedLanguageRef.current },
+        }
+      );
       const userText = sttRes.data.transcription?.trim();
-      
+
       if (!userText) {
-        setStatus('IDLE');
-        addMessage('error', "I didn't catch that. Please try again.", { retryable: false });
+        setStatus("IDLE");
+        addMessage("error", "I didn't catch that. Please try again.", {
+          retryable: false,
+        });
         isProcessingRef.current = false;
         return;
       }
-      
+
       isProcessingRef.current = false;
       await processTextQuery(userText);
-
     } catch (e) {
-      console.error('Audio processing error:', e);
-      setStatus('IDLE');
-      addMessage('error', "Couldn't process audio. Please try again.", { retryable: false });
+      console.error("Audio processing error:", e);
+      setStatus("IDLE");
+      addMessage("error", "Couldn't process audio. Please try again.", {
+        retryable: false,
+      });
       isProcessingRef.current = false;
     }
   }, [getAuthHeaders, processTextQuery, addMessage]);
@@ -629,7 +761,7 @@ const VoiceSection = ({ currentDiagnosis }) => {
       clearInterval(vadIntervalRef.current);
       vadIntervalRef.current = null;
     }
-    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+    if (audioContextRef.current && audioContextRef.current.state !== "closed") {
       audioContextRef.current.close().catch(() => {});
     }
     audioContextRef.current = null;
@@ -639,40 +771,41 @@ const VoiceSection = ({ currentDiagnosis }) => {
   }, []);
 
   const startRecording = useCallback(async () => {
-    if (status !== 'IDLE') return;
-    
+    if (status !== "IDLE") return;
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new AudioRecorderPolyfill(stream);
       mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
 
-      recorder.addEventListener('dataavailable', (e) => {
+      recorder.addEventListener("dataavailable", (e) => {
         if (e.data.size > 0) {
           audioChunksRef.current.push(e.data);
         }
       });
-      
-      recorder.addEventListener('stop', () => {
+
+      recorder.addEventListener("stop", () => {
         stopVAD(); // Cleanup VAD before processing
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
         processAudioBlob();
       });
 
       recorder.start();
-      setStatus('LISTENING');
+      setStatus("LISTENING");
       recordingStartTimeRef.current = Date.now();
 
       // --- VAD: Setup Audio Analysis (only in sterile mode) ---
       if (isSterileMode) {
         try {
-          const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          const audioContext = new (window.AudioContext ||
+            window.webkitAudioContext)();
           const source = audioContext.createMediaStreamSource(stream);
           const analyser = audioContext.createAnalyser();
-          analyser.fftSize = 512;               // Increased for time-domain
-          analyser.smoothingTimeConstant = 0.4;  // Fast decay for snappier feedback
+          analyser.fftSize = 512; // Increased for time-domain
+          analyser.smoothingTimeConstant = 0.4; // Fast decay for snappier feedback
           source.connect(analyser);
-          
+
           audioContextRef.current = audioContext;
           analyserRef.current = analyser;
           silenceStartRef.current = null;
@@ -682,34 +815,35 @@ const VoiceSection = ({ currentDiagnosis }) => {
           // Monitor volume at 50ms intervals (High-res)
           vadIntervalRef.current = setInterval(() => {
             if (!analyserRef.current || !dataArray) return;
-            
+
             analyserRef.current.getFloatTimeDomainData(dataArray); // WAVEFORM data (Physics-based)
-            
+
             // Calculate True RMS (Root Mean Square) for sound pressure
             let sum = 0;
             for (let i = 0; i < dataArray.length; i++) {
               sum += dataArray[i] * dataArray[i];
             }
             const rms = Math.sqrt(sum / dataArray.length);
-            
+
             setDebugRMS(rms); // Update UI Overlay
-            
+
             const now = Date.now();
-            const recordingDuration = now - (recordingStartTimeRef.current || now);
-            
+            const recordingDuration =
+              now - (recordingStartTimeRef.current || now);
+
             // Only start checking for silence after minimum speech duration
             if (recordingDuration < MIN_SPEECH_DURATION_MS) {
               return;
             }
-            
+
             if (rms < SILENCE_THRESHOLD) {
               // Below threshold - silence detected
               if (!silenceStartRef.current) {
                 silenceStartRef.current = now;
               } else if (now - silenceStartRef.current >= SILENCE_DURATION_MS) {
                 // Silence duration exceeded - auto-stop
-                console.log('VAD: Silence detected, auto-stopping recording');
-                if (mediaRecorderRef.current?.state === 'recording') {
+                console.log("VAD: Silence detected, auto-stopping recording");
+                if (mediaRecorderRef.current?.state === "recording") {
                   mediaRecorderRef.current.stop();
                 }
               }
@@ -718,21 +852,29 @@ const VoiceSection = ({ currentDiagnosis }) => {
               silenceStartRef.current = null;
             }
           }, VAD_INTERVAL_MS);
-
         } catch (vadError) {
-          console.warn('VAD setup failed, continuing without auto-stop:', vadError);
+          console.warn(
+            "VAD setup failed, continuing without auto-stop:",
+            vadError
+          );
         }
       }
-
     } catch (e) {
       console.error("Microphone error:", e);
-      addMessage('error', "Microphone access denied. Please check permissions.", { retryable: false });
+      addMessage(
+        "error",
+        "Microphone access denied. Please check permissions.",
+        { retryable: false }
+      );
     }
   }, [status, processAudioBlob, addMessage, isSterileMode, stopVAD]);
 
   const stopRecording = useCallback(() => {
     stopVAD(); // Always cleanup VAD first
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state === "recording"
+    ) {
       mediaRecorderRef.current.stop();
       // NOTE: Status update happens in processAudioBlob after 'stop' event fires
     }
@@ -743,26 +885,26 @@ const VoiceSection = ({ currentDiagnosis }) => {
       audioPlayerRef.current.pause();
       audioPlayerRef.current.currentTime = 0;
     }
-    setStatus('IDLE');
+    setStatus("IDLE");
   }, []);
 
   const handleOrbClick = useCallback(() => {
-    if (status === 'IDLE') startRecording();
-    else if (status === 'LISTENING') stopRecording();
-    else if (status === 'SPEAKING') stopPlayback();
+    if (status === "IDLE") startRecording();
+    else if (status === "LISTENING") stopRecording();
+    else if (status === "SPEAKING") stopPlayback();
   }, [status, startRecording, stopRecording, stopPlayback]);
 
   // Backend cold-start detection (Hugging Face Spaces)
   useEffect(() => {
     const wakeUpBackend = async () => {
       try {
-        setBackendStatus('waking');
+        setBackendStatus("waking");
         // Long timeout for cold start (60s)
         await axios.get(`${API_BASE}/health`, { timeout: 60000 });
-        setBackendStatus('ready');
+        setBackendStatus("ready");
       } catch (e) {
         console.error("Backend failed to wake:", e);
-        setBackendStatus('error');
+        setBackendStatus("error");
       }
     };
     wakeUpBackend();
@@ -770,9 +912,9 @@ const VoiceSection = ({ currentDiagnosis }) => {
 
   // Sterile mode: Auto-listen after AI response ends
   useEffect(() => {
-    if (isSterileMode && status === 'IDLE' && messages.length > 0) {
+    if (isSterileMode && status === "IDLE" && messages.length > 0) {
       const lastMessage = messages[messages.length - 1];
-      if (lastMessage?.role === 'assistant') {
+      if (lastMessage?.role === "assistant") {
         const timer = setTimeout(() => {
           startRecording();
         }, 2000);
@@ -783,18 +925,31 @@ const VoiceSection = ({ currentDiagnosis }) => {
 
   // Sterile mode: Auto-prompt on new diagnosis
   useEffect(() => {
-    if (isSterileMode && currentDiagnosis && status === 'IDLE' && messages.length === 0) {
+    if (
+      isSterileMode &&
+      currentDiagnosis &&
+      status === "IDLE" &&
+      messages.length === 0
+    ) {
       const timer = setTimeout(() => {
         processTextQuery("Explain the findings detected in this scan");
       }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [isSterileMode, currentDiagnosis, status, messages.length, processTextQuery]);
-
+  }, [
+    isSterileMode,
+    currentDiagnosis,
+    status,
+    messages.length,
+    processTextQuery,
+  ]);
 
   return (
-    <div className={`relative min-h-[600px] w-full rounded-3xl overflow-hidden shadow-2xl border border-white/10 group bg-slate-950 transition-all duration-500 ${isSterileMode ? 'ring-2 ring-emerald-500/30 scale-[1.01]' : ''}`}>
-      
+    <div
+      className={`relative min-h-[600px] w-full rounded-3xl overflow-hidden shadow-2xl border border-white/10 group bg-slate-950 transition-all duration-500 ${
+        isSterileMode ? "ring-2 ring-emerald-500/30 scale-[1.01]" : ""
+      }`}
+    >
       {/* Background Layers */}
       <div className="absolute inset-0 bg-slate-900 z-0"></div>
       <div className="absolute -top-20 -right-20 w-80 h-80 bg-purple-600/20 rounded-full blur-[100px] animate-blob"></div>
@@ -802,44 +957,50 @@ const VoiceSection = ({ currentDiagnosis }) => {
       <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150 z-0"></div>
 
       {/* Backend Status Messages */}
-      {backendStatus === 'waking' && (
+      {backendStatus === "waking" && (
         <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 bg-amber-500/20 border border-amber-500/30 rounded-lg backdrop-blur-sm">
           <div className="flex items-center gap-2">
             <RefreshCw className="w-3 h-3 text-amber-400 animate-spin" />
-            <span className="text-xs text-amber-200">Initializing AI Engines... (this may take 30s)</span>
+            <span className="text-xs text-amber-200">
+              Initializing AI Engines... (this may take 30s)
+            </span>
           </div>
         </div>
       )}
-      {backendStatus === 'error' && (
+      {backendStatus === "error" && (
         <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 bg-red-500/20 border border-red-500/30 rounded-lg backdrop-blur-sm">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-3 h-3 text-red-400" />
-            <span className="text-xs text-red-200">Server Unavailable. Please refresh the page.</span>
+            <span className="text-xs text-red-200">
+              Server Unavailable. Please refresh the page.
+            </span>
           </div>
         </div>
       )}
 
       {/* Hidden Audio Element */}
-      <audio 
-        ref={audioPlayerRef} 
-        onEnded={() => setStatus('IDLE')}
+      <audio
+        ref={audioPlayerRef}
+        onEnded={() => setStatus("IDLE")}
         onError={(e) => {
-          console.error('Audio playback error:', e);
-          setStatus('IDLE');
-          setMessages(prev => [...prev, { 
-            id: generateId(), 
-            role: 'error', 
-            text: 'Failed to play audio response.', 
-            retryable: false 
-          }]);
+          console.error("Audio playback error:", e);
+          setStatus("IDLE");
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: generateId(),
+              role: "error",
+              text: "Failed to play audio response.",
+              retryable: false,
+            },
+          ]);
         }}
-        className="hidden" 
+        className="hidden"
         aria-hidden="true"
       />
 
       {/* Main UI Container */}
       <div className="absolute inset-0 flex flex-col z-10">
-
         {/* Header - Z-index fixed to be above chat stream */}
         <div className="h-16 flex items-center justify-between px-6 border-b border-white/5 bg-slate-900/40 backdrop-blur-md relative z-50 pointer-events-auto">
           <div className="flex items-center gap-3">
@@ -847,11 +1008,21 @@ const VoiceSection = ({ currentDiagnosis }) => {
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg border border-white/10">
                 <Activity className="w-5 h-5 text-white" />
               </div>
-              <div className={`absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-slate-900 ${status === 'LISTENING' ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} />
+              <div
+                className={`absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-slate-900 ${
+                  status === "LISTENING"
+                    ? "bg-red-500 animate-pulse"
+                    : "bg-emerald-500"
+                }`}
+              />
             </div>
             <div>
-              <h3 className="text-white font-semibold text-sm tracking-tight">VoxRay Voice</h3>
-              <p className="text-indigo-200/50 text-[10px] uppercase tracking-wider font-medium">Unified Interface</p>
+              <h3 className="text-white font-semibold text-sm tracking-tight">
+                VoxRay Voice
+              </h3>
+              <p className="text-indigo-200/50 text-[10px] uppercase tracking-wider font-medium">
+                Unified Interface
+              </p>
             </div>
           </div>
 
@@ -860,81 +1031,111 @@ const VoiceSection = ({ currentDiagnosis }) => {
           <div className="flex items-center gap-4">
             {/* Language Selector (V2 Multilingual) */}
             <div className="relative">
-                <button
-                  onClick={() => setShowLanguageMenu(!showLanguageMenu)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800/90 border border-slate-700/60 hover:bg-slate-700/90 transition-all duration-200 backdrop-blur-sm shadow-lg flex items-center gap-2"
-                  aria-label="Select language"
-                >
-                  <Globe className="w-4 h-4 text-blue-400" />
-                  <span className="text-xs font-medium text-white/90">{
-                    { 'en': 'EN', 'es': 'ES', 'fr': 'FR', 'de': 'DE', 'zh': '中', 'hi': 'हि' }[selectedLanguage] || 'EN'
-                  }</span>
-                </button>
-                {showLanguageMenu && (
-                  <div className="absolute right-0 mt-2 w-40 bg-slate-800/95 border border-slate-700 rounded-lg shadow-2xl overflow-hidden backdrop-blur-md z-[100] pointer-events-auto">
-                    {[
-                      { code: 'en', label: 'English', flag: '🇬🇧' },
-                      { code: 'es', label: 'Español', flag: '🇪🇸' },
-                      { code: 'fr', label: 'Français', flag: '🇫🇷' },
-                      { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
-                      { code: 'zh', label: '中文', flag: '🇨🇳' }
-                      // Hindi disabled — STT (whisper-base) cannot reliably distinguish
-                      // spoken Hindi from Urdu. Re-enable after upgrading to whisper-medium.
-                      // { code: 'hi', label: 'हिन्दी', flag: '🇮🇳' }
-                    ].map((lang) => (
-                      <button
-                        key={lang.code}
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedLanguage(lang.code);
-                          setShowLanguageMenu(false);
-                        }}
-                        className={`w-full px-3 py-2.5 text-left text-sm hover:bg-slate-700/80 transition-colors flex items-center gap-2 cursor-pointer ${
-                          selectedLanguage === lang.code
-                            ? 'bg-blue-600/30 text-white border-l-2 border-blue-500'
-                            : 'text-white/80'
-                        }`}
-                      >
-                        <span className="text-base">{lang.flag}</span>
-                        <span>{lang.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+              <button
+                onClick={() => setShowLanguageMenu(!showLanguageMenu)}
+                className="px-3 py-1.5 rounded-lg bg-slate-800/90 border border-slate-700/60 hover:bg-slate-700/90 transition-all duration-200 backdrop-blur-sm shadow-lg flex items-center gap-2"
+                aria-label="Select language"
+              >
+                <Globe className="w-4 h-4 text-blue-400" />
+                <span className="text-xs font-medium text-white/90">
+                  {{
+                    en: "EN",
+                    es: "ES",
+                    fr: "FR",
+                    de: "DE",
+                    zh: "中",
+                    hi: "हि",
+                  }[selectedLanguage] || "EN"}
+                </span>
+              </button>
+              {showLanguageMenu && (
+                <div className="absolute right-0 mt-2 w-40 bg-slate-800/95 border border-slate-700 rounded-lg shadow-2xl overflow-hidden backdrop-blur-md z-[100] pointer-events-auto">
+                  {[
+                    { code: "en", label: "English", flag: "🇬🇧" },
+                    { code: "es", label: "Español", flag: "🇪🇸" },
+                    { code: "fr", label: "Français", flag: "🇫🇷" },
+                    { code: "de", label: "Deutsch", flag: "🇩🇪" },
+                    { code: "zh", label: "中文", flag: "🇨🇳" },
+                    // Hindi disabled — STT (whisper-base) cannot reliably distinguish
+                    // spoken Hindi from Urdu. Re-enable after upgrading to whisper-medium.
+                    // { code: 'hi', label: 'हिन्दी', flag: '🇮🇳' }
+                  ].map((lang) => (
+                    <button
+                      key={lang.code}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedLanguage(lang.code);
+                        setShowLanguageMenu(false);
+                      }}
+                      className={`w-full px-3 py-2.5 text-left text-sm hover:bg-slate-700/80 transition-colors flex items-center gap-2 cursor-pointer ${
+                        selectedLanguage === lang.code
+                          ? "bg-blue-600/30 text-white border-l-2 border-blue-500"
+                          : "text-white/80"
+                      }`}
+                    >
+                      <span className="text-base">{lang.flag}</span>
+                      <span>{lang.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Sterile Mode Toggle */}
-            <button 
+            <button
               onClick={() => setIsSterileMode(!isSterileMode)}
               className="flex items-center gap-2 group cursor-pointer focus:outline-none"
               title="Hands-free mode"
             >
-              <span className={`text-[10px] font-medium uppercase tracking-wider transition-colors ${isSterileMode ? 'text-emerald-400' : 'text-slate-500'}`}>Sterile</span>
-              <div className={`w-8 h-4 rounded-full border relative transition-colors ${isSterileMode ? 'bg-emerald-900/50 border-emerald-500/30' : 'bg-slate-800 border-white/10'}`}>
-                <div className={`absolute top-0.5 w-3 h-3 rounded-full transition-all duration-300 ${isSterileMode ? 'right-0.5 bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'left-0.5 bg-slate-500'}`} />
+              <span
+                className={`text-[10px] font-medium uppercase tracking-wider transition-colors ${
+                  isSterileMode ? "text-emerald-400" : "text-slate-500"
+                }`}
+              >
+                Sterile
+              </span>
+              <div
+                className={`w-8 h-4 rounded-full border relative transition-colors ${
+                  isSterileMode
+                    ? "bg-emerald-900/50 border-emerald-500/30"
+                    : "bg-slate-800 border-white/10"
+                }`}
+              >
+                <div
+                  className={`absolute top-0.5 w-3 h-3 rounded-full transition-all duration-300 ${
+                    isSterileMode
+                      ? "right-0.5 bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"
+                      : "left-0.5 bg-slate-500"
+                  }`}
+                />
               </div>
             </button>
           </div>
         </div>
 
         {/* Chat Stream */}
-        <div 
+        <div
           ref={scrollRef}
           className="flex-1 overflow-y-auto hide-scroll px-5 py-4 space-y-5 scroll-mask relative"
         >
           {/* Medical Context Pill */}
           {currentDiagnosis && (
             <div className="flex justify-center sticky top-0 z-20 mb-4 pointer-events-none">
-              <motion.div 
+              <motion.div
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 className="px-3 py-1.5 rounded-full bg-slate-800/90 border border-amber-500/20 text-[10px] flex items-center gap-2 backdrop-blur-md shadow-lg"
               >
-                <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" aria-hidden="true" />
+                <span
+                  className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse"
+                  aria-hidden="true"
+                />
                 <span className="text-slate-400">Context:</span>
                 <span className="text-amber-300 font-semibold">
-                  {currentDiagnosis.diagnosis.replace(/^\d+_/, '').replace(/_/g, ' ')}
+                  {currentDiagnosis.diagnosis
+                    .replace(/^\d+_/, "")
+                    .replace(/_/g, " ")}
                 </span>
                 <span className="text-slate-500">
                   ({(currentDiagnosis.confidence * 100).toFixed(0)}%)
@@ -946,19 +1147,23 @@ const VoiceSection = ({ currentDiagnosis }) => {
           {/* Messages */}
           <AnimatePresence mode="popLayout">
             {messages.map((msg) => (
-              <ChatMessage key={msg.id} msg={msg} onRetry={handleRetry} isRetrying={isRetrying} />
+              <ChatMessage
+                key={msg.id}
+                msg={msg}
+                onRetry={handleRetry}
+                isRetrying={isRetrying}
+              />
             ))}
           </AnimatePresence>
-          
+
           {/* Empty State */}
           {messages.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center text-white/20 gap-3 pb-20">
               <Sparkles className="w-10 h-10 opacity-30" aria-hidden="true" />
               <p className="text-xs text-center">
-                {currentDiagnosis 
+                {currentDiagnosis
                   ? "Tap the orb or use a quick action to discuss the findings"
-                  : "Upload an X-ray first, then ask questions here"
-                }
+                  : "Upload an X-ray first, then ask questions here"}
               </p>
             </div>
           )}
@@ -969,52 +1174,51 @@ const VoiceSection = ({ currentDiagnosis }) => {
           <div className="absolute bottom-0 left-0 right-0 h-56 bg-gradient-to-t from-slate-900 via-slate-900/90 to-transparent pointer-events-none"></div>
 
           <div className="relative h-full flex flex-col items-center justify-end pb-14 gap-6">
-            
             {/* Quick Actions (Functional) */}
             <AnimatePresence>
-              {messages.length === 0 && status === 'IDLE' && currentDiagnosis && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
-                  className="flex gap-2 flex-wrap justify-center px-4 relative z-30"
-                >
+              {messages.length === 0 &&
+                status === "IDLE" &&
+                currentDiagnosis && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    className="flex gap-2 flex-wrap justify-center px-4 relative z-30"
+                  >
                     {QUICK_ACTIONS.map((action) => (
-                        <button 
-                            key={action.label}
-                            onClick={() => processTextQuery(action.prompt)}
-                            disabled={status !== 'IDLE'}
-                            className={`px-3 py-1.5 rounded-full border text-[10px] transition-all backdrop-blur-sm whitespace-nowrap
-                              ${status !== 'IDLE'
-                                ? 'bg-white/5 border-white/10 text-white/30 cursor-not-allowed' 
-                                : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:border-white/30 hover:scale-105 active:scale-95'
+                      <button
+                        key={action.label}
+                        onClick={() => processTextQuery(action.prompt)}
+                        disabled={status !== "IDLE"}
+                        className={`px-3 py-1.5 rounded-full border text-[10px] transition-all backdrop-blur-sm whitespace-nowrap
+                              ${
+                                status !== "IDLE"
+                                  ? "bg-white/5 border-white/10 text-white/30 cursor-not-allowed"
+                                  : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:border-white/30 hover:scale-105 active:scale-95"
                               }`}
-                        >
-                            {action.label}
-                        </button>
+                      >
+                        {action.label}
+                      </button>
                     ))}
-                </motion.div>
-              )}
+                  </motion.div>
+                )}
             </AnimatePresence>
 
             {/* SUPER ORB */}
             <div className="flex items-center gap-8 w-full justify-center px-8 relative z-30">
-               <VoiceOrb 
-                 status={status} 
-                 recordingTime={recordingTime} 
-                 onClick={handleOrbClick} 
-                 debugRMS={debugRMS}
-                 showDebug={isSterileMode}
-               />
+              <VoiceOrb
+                status={status}
+                recordingTime={recordingTime}
+                onClick={handleOrbClick}
+                debugRMS={debugRMS}
+                showDebug={isSterileMode}
+              />
             </div>
-            
           </div>
         </div>
 
         {/* Footer with HIPAA Badge and Clear Button */}
         <div className="absolute bottom-3 left-4 right-4 flex justify-between items-center z-30">
-
-          
           {/* Clear Chat Button */}
           {messages.length > 0 && (
             <button
@@ -1026,9 +1230,8 @@ const VoiceSection = ({ currentDiagnosis }) => {
             </button>
           )}
         </div>
-
       </div>
-      
+
       {/* Top Glass Reflection */}
       <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none z-40"></div>
     </div>
@@ -1038,12 +1241,8 @@ const VoiceSection = ({ currentDiagnosis }) => {
 VoiceSection.propTypes = {
   currentDiagnosis: PropTypes.shape({
     diagnosis: PropTypes.string.isRequired,
-    confidence: PropTypes.number.isRequired
-  })
-};
-
-VoiceSection.defaultProps = {
-  currentDiagnosis: null
+    confidence: PropTypes.number.isRequired,
+  }),
 };
 
 export default VoiceSection;
