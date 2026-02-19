@@ -25,18 +25,36 @@ curl -H "x-stack-access-token: YOUR_JWT_TOKEN" ...
 
 ## Endpoints Summary
 
-| Method | Endpoint               | Description                  | Version |
-| ------ | ---------------------- | ---------------------------- | ------- |
-| GET    | `/health`              | Health check                 | v1      |
-| GET    | `/metrics`             | Prometheus metrics           | v1      |
-| GET    | `/api/feature-flags`   | Feature flag status          | v1      |
-| POST   | `/predict/image`       | Classify X-Ray abnormalities | v1/v2   |
-| POST   | `/predict/explain`     | Generate Grad-CAM heatmap    | v1/v2   |
-| POST   | `/transcribe/audio`    | Speech-to-Text (Whisper)     | v1/v2   |
-| POST   | `/generate/speech`     | Text-to-Speech (Edge-TTS)    | v1/v2   |
-| POST   | `/chat`                | Medical LLM Chat             | v1/v2   |
-| POST   | `/v2/chat`             | Enhanced chat with language  | v2      |
-| POST   | `/v2/predict`          | Enhanced prediction          | v2      |
-| POST   | `/v2/voice/stt`        | Enhanced STT                 | v2      |
-| POST   | `/v2/voice/tts`        | Enhanced TTS                 | v2      |
-| GET    | `/v2/clinical/context` | Clinical context             | v2      |
+### V1 Endpoints (Stable, Backward Compatible)
+
+| Method | Endpoint             | Description                  | Auth Required |
+| ------ | -------------------- | ---------------------------- | ------------- |
+| GET    | `/health`            | Health check                 | No            |
+| GET    | `/metrics`           | Prometheus metrics           | No            |
+| GET    | `/api/feature-flags` | Feature flag status          | No            |
+| POST   | `/predict/image`     | Classify X-Ray abnormalities | Yes           |
+| POST   | `/predict/explain`   | Generate Grad-CAM heatmap    | Yes           |
+| POST   | `/transcribe/audio`  | Speech-to-Text (Whisper)     | Yes           |
+| POST   | `/generate/speech`   | Text-to-Speech (Edge-TTS)    | No            |
+| POST   | `/chat`              | Medical LLM Chat             | Yes           |
+
+### V1 Aliases (Explicit Versioned Paths)
+
+| Method | Endpoint               | Description                   |
+| ------ | ---------------------- | ----------------------------- |
+| POST   | `/v1/predict/image`    | Alias for `/predict/image`    |
+| POST   | `/v1/transcribe/audio` | Alias for `/transcribe/audio` |
+| POST   | `/v1/generate/speech`  | Alias for `/generate/speech`  |
+| POST   | `/v1/chat`             | Alias for `/chat`             |
+| GET    | `/v1/health`           | Alias for `/health`           |
+
+### V2 Endpoints (Enhanced, Feature-Flag Gated)
+
+| Method | Endpoint                          | Description                                   | Feature Flag Required         |
+| ------ | --------------------------------- | --------------------------------------------- | ----------------------------- |
+| GET    | `/v2/health`                      | V2 health check with feature flag status      | None                          |
+| POST   | `/v2/chat`                        | Enhanced chat with multilingual support       | None                          |
+| POST   | `/v2/predict/image`               | Ensemble prediction with uncertainty          | `FF_ENSEMBLE_MODEL=true`      |
+| POST   | `/v2/predict/dicom`               | DICOM file prediction with anonymization      | `FF_DICOM_SUPPORT=true`       |
+| POST   | `/v2/voice/enhance-transcription` | Medical vocabulary correction for transcripts | `FF_MEDICAL_VOCABULARY=true`  |
+| POST   | `/v2/voice/wake-word-detect`      | Wake word detection in audio (stub)           | `FF_WAKE_WORD_DETECTION=true` |

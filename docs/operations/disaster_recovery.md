@@ -1,4 +1,4 @@
-# VoxRay AI - Disaster Recovery Plan
+e# VoxRay AI - Disaster Recovery Plan
 
 ## 1. Overview
 
@@ -30,7 +30,7 @@ This document outlines the procedures for recovering the VoxRay AI system in the
 
 ## 3. Recovery Scenarios
 
-### 3.1 Region Failure (Netlify/HF Spaces Down)
+### 3.1 Region Failure (K8s Cluster Down)
 
 1. **Trigger:** Monitoring alerts site down > 5 mins.
 2. **Action:**
@@ -50,10 +50,11 @@ This document outlines the procedures for recovering the VoxRay AI system in the
 
 1. **Trigger:** Model load failure logs or low prediction confidence.
 2. **Action:**
-   - Update `pydantic` settings or env var to point to previous model SHA.
-   - Restart pods.
+   - Update env var `HF_TOKEN` and restart pods to trigger fresh model download from HF Hub.
+   - Model is automatically re-downloaded from `witty22/voxray-model` on startup.
 
 ## 4. Contacts
 
-- **DevOps Lead:** AG-05
-- **Migration Lead:** AG-00
+- **Repository:** https://github.com/utkarshwasan/VoxRay-AI
+- **Model Registry:** https://huggingface.co/witty22/voxray-model
+- **Issues:** https://github.com/utkarshwasan/VoxRay-AI/issues

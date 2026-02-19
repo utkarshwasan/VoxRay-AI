@@ -4,6 +4,18 @@ import os
 
 BASE_URL = "http://localhost:8000"
 
+
+def _server_is_running() -> bool:
+    """Check if the backend server is running at BASE_URL."""
+    try:
+        httpx.get(f"{BASE_URL}/health", timeout=2.0)
+        return True
+    except Exception:
+        return False
+
+
+SERVER_RUNNING = _server_is_running()
+
 @pytest.mark.skipif(
     not os.path.exists("consolidated_medical_data/test/03_PNEUMONIA/3 - Copy.png"),
     reason="Test image file not available"
@@ -32,9 +44,10 @@ def test_transcribe_audio_dummy():
     data = resp.json()
     assert "transcription" in data
 
+@pytest.mark.skipif(not SERVER_RUNNING, reason="Backend server not running at localhost:8000")
 def test_generate_speech_simple():
     payload = {"text": "Fracture detected"}
-    resp = httpx.post(f"{BASE_URL}/generate/speech", json=payload)
+    resp = httpx.post(f"{BASE_URL}/generate/speech", json=payload, timeout=30.0)
     assert resp.status_code == 200
     # Edge-TTS returns audio/mpeg format
     assert resp.headers.get("content-type") in ["audio/wav", "audio/mpeg"]

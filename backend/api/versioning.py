@@ -27,7 +27,7 @@ class APIVersionMiddleware:
                 # Add version headers
                 if path.startswith("/v1/"):
                     headers.append((b"x-api-version", b"1.0"))
-                    headers.append((b"x-api-deprecation-date", b"2025-12-31"))
+                    headers.append((b"x-api-deprecation-date", b"2026-12-31"))
                     headers.append(
                         (
                             b"warning",

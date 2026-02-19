@@ -1,13 +1,13 @@
 """
-VoxRay AI — Multilingual Fix Verification Tests
+VoxRay AI - Multilingual Fix Verification Tests
 
 All runtime findings are incorporated:
-- Latin text through hi-IN-SwaraNeural succeeds (27 chunks) — not blocked
-- Arabic text through hi-IN-SwaraNeural raises NoAudioReceived — blocked with 422
-- forced_decoder_ids alone prevents Urdu token — suppress_tokens omitted intentionally
-- pytest.ini already has asyncio_mode = strict — no new config needed
+- Latin text through hi-IN-SwaraNeural succeeds (27 chunks) - not blocked
+- Arabic text through hi-IN-SwaraNeural raises NoAudioReceived - blocked with 422
+- forced_decoder_ids alone prevents Urdu token - suppress_tokens omitted intentionally
+- pytest.ini already has asyncio_mode = strict - no new config needed
 
-Run: venv\Scripts\python.exe -m pytest tests/test_multilingual_fix.py -v
+Run: python -m pytest tests/test_multilingual_fix.py -v
 Auth: set VOXRAY_TEST_TOKEN=<your_stack_auth_jwt> in environment before running
 """
 

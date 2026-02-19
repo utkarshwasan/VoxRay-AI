@@ -3,6 +3,7 @@ import io
 import numpy as np  # NumPy is relatively fast, keeping for common types
 from pathlib import Path
 from PIL import Image
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, HTTPException, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -154,17 +155,6 @@ def load_class_names():
                 "06_PNEUMONIA",
             ]
             print(
-                f"⚠️ Using pre-defined class names ({len(MEDICAL_CLASS_NAMES)} classes)"
-            )
-            MEDICAL_CLASS_NAMES = [
-                "01_NORMAL_LUNG",
-                "02_NORMAL_BONE",
-                "03_NORMAL_PNEUMONIA",
-                "04_LUNG_CANCER",
-                "05_FRACTURED",
-                "06_PNEUMONIA",
-            ]
-            print(
                 f"⚠️ Training directory not found. Using fallback with {len(MEDICAL_CLASS_NAMES)} classes"
             )
     except Exception as e:
@@ -179,9 +169,17 @@ def load_class_names():
         ]
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan handler — replaces deprecated @app.on_event('startup')."""
+    await load_models()
+    yield
+
+
 app = FastAPI(
     title="Intelligent Medical Diagnosis Assistant API",
     description="Serves F1 (Image) and F2 (Voice) models via REST API.",
+    lifespan=lifespan,
 )
 
 # v2 router is handled in versioning.py to avoid double registration
@@ -273,7 +271,7 @@ async def metrics_endpoint():
     metrics_lines = [
         "# HELP voxray_info Build information",
         '# TYPE voxray_info gauge',
-        'voxray_info{version="1.0.0"} 1',
+        'voxray_info{version="2.0.0"} 1',
         "",
         "# HELP voxray_feature_flag Feature flag status (1=enabled, 0=disabled)",
         "# TYPE voxray_feature_flag gauge",
@@ -295,8 +293,8 @@ async def metrics_endpoint():
     return Response(content="\n".join(metrics_lines), media_type="text/plain")
 
 
-@app.on_event("startup")
 async def load_models():
+    """Load all ML models and heavy dependencies at application startup."""
     # Lazy load heavy dependencies
     print("⏳ Initializing models and heavy dependencies...")
     global tf, torch, librosa, sf, edge_tts, preprocess_input
